@@ -135,6 +135,17 @@
 
 <div id="wrap"><canvas id="canv"></canvas></div>
 
+<!-- QR modal for opening the link on phone -->
+<div id="qrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99;align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="background:#0f0f1a;padding:28px;border-radius:18px;max-width:340px;text-align:center;border:1px solid rgba(255,255,255,.1)">
+    <div style="font-size:22px;font-weight:900;color:#fff;margin-bottom:8px">📱 Scan to play on phone</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.55);margin-bottom:18px">Use your phone's back camera for premium 1080p quality. Open camera app → point at QR.</div>
+    <img id="qrImg" src="" alt="QR" style="width:240px;height:240px;border-radius:12px;background:#fff;padding:8px;display:block;margin:0 auto" />
+    <div id="qrUrl" style="font-size:11px;color:rgba(255,255,255,.5);margin-top:14px;word-break:break-all;font-family:monospace"></div>
+    <button id="qrClose" style="margin-top:16px;padding:11px 22px;border:none;border-radius:10px;background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;font-weight:700;cursor:pointer;font-size:13px">Close</button>
+  </div>
+</div>
+
 <div id="panel">
   <div class="badge"><div class="nm">GAMEOS</div><div class="tg">ONE GAME A DAY</div></div>
 
@@ -156,6 +167,7 @@
   </div>
 
   <button class="btn" id="shareBtn">🔗 Share game</button>
+  <button class="btn" id="phoneBtn">📱 Open on Phone</button>
 
   <div class="divider"></div>
   <div class="sec">Camera</div>
@@ -1634,6 +1646,19 @@ $('recordBtn').addEventListener('click',()=>{
   if (!isRecording) startRecording(); else stopRecording();
 });
 $('shareBtn').addEventListener('click', shareLink);
+$('phoneBtn').addEventListener('click', ()=>{
+  const base = location.origin + location.pathname;
+  const q = new URLSearchParams();
+  if (currentGame) q.set('g', currentGame.id);
+  const url = q.toString() ? `${base}?${q}` : base;
+  $('qrImg').src = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=${encodeURIComponent(url)}`;
+  $('qrUrl').textContent = url;
+  $('qrModal').style.display = 'flex';
+});
+$('qrClose').addEventListener('click', ()=> $('qrModal').style.display='none');
+$('qrModal').addEventListener('click', e=>{
+  if (e.target.id==='qrModal') $('qrModal').style.display='none';
+});
 $('dlBtn').addEventListener('click', ()=>{
   if (!savedBlob) return;
   const url = URL.createObjectURL(savedBlob);
