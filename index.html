@@ -158,12 +158,10 @@
   <button class="btn" id="shareBtn">🔗 Share game</button>
 
   <div class="divider"></div>
-  <div class="sec">Face</div>
-  <div id="faceGrid"></div>
-
-  <div class="divider"></div>
   <div class="sec">Camera</div>
   <select id="camSelect"><option>Loading…</option></select>
+
+  <button class="btn toggle-btn" id="flipBtn">🔄 Flip Camera</button>
 
   <div class="divider"></div>
   <button class="btn toggle-btn" id="safeBtn">📐 Safe Zone</button>
@@ -371,13 +369,11 @@ try{
         if(cropParams){
           const vw=video.videoWidth||640,vh=video.videoHeight||480;
           const vx=lm.x*vw,vy=lm.y*vh;
-          cx=(1-(vx-cropParams.sx)/cropParams.sw)*W;
+          const nx = (vx-cropParams.sx)/cropParams.sw;
+          cx = (isFrontCamera ? (1-nx) : nx) * W;
           cy=(vy-cropParams.sy)/cropParams.sh*H;
-        } else {cx=(1-lm.x)*W;cy=lm.y*H;}
-        if(cx>=0&&cx<=W&&cy>=0&&cy<=H){
-          /* compute velocity from previous frame */
-          handPts.push({x:cx,y:cy});
-        }
+        } else { cx=(isFrontCamera?(1-lm.x):lm.x)*W; cy=lm.y*H; }
+        if(cx>=0&&cx<=W&&cy>=0&&cy<=H) handPts.push({x:cx,y:cy});
       }
       hands.push(handPts);
     }
@@ -431,30 +427,38 @@ async function pumpFrames(){
       sendingHands=false;
     }
     frameTick++;
-    if(faceMode!=='normal' && mpFace && !sendingFace && frameTick%2===0){
-      sendingFace=true;
-      try{ await mpFace.send({image:video}); }catch(_){}
-      sendingFace=false;
-    }
+    /* face detection disabled */
   }
   requestAnimationFrame(pumpFrames);
 }
 
 let currentCamId=null;
+/* track which camera so we know whether to mirror */
+let isFrontCamera = !IS_MOBILE; /* laptop=front (mirror), mobile=back default (no mirror) */
+
 async function startCamera(deviceId){
   try{
     if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+    /* high-quality always: ask for 1080p */
+    const want = IS_MOBILE ? 'environment' : 'user';
     const constraints={
       video: deviceId
-        ? {deviceId:{exact:deviceId}, width:{ideal:IS_MOBILE?720:1920}, height:{ideal:IS_MOBILE?1280:1080}}
-        : {facingMode:'user',          width:{ideal:IS_MOBILE?720:1920}, height:{ideal:IS_MOBILE?1280:1080}},
+        ? {deviceId:{exact:deviceId},
+           width:{ideal:1920}, height:{ideal:1080},
+           frameRate:{ideal:30}}
+        : {facingMode: want,
+           width:{ideal:1920}, height:{ideal:1080},
+           frameRate:{ideal:30}},
       audio:false
     };
     const s=await navigator.mediaDevices.getUserMedia(constraints);
     video.srcObject=s; await video.play();
-    currentCamId=deviceId||s.getVideoTracks()[0].getSettings().deviceId;
+    const settings = s.getVideoTracks()[0].getSettings();
+    currentCamId = deviceId || settings.deviceId;
+    /* detect front vs back from facingMode */
+    isFrontCamera = settings.facingMode ? (settings.facingMode==='user') : !IS_MOBILE;
     cameraOK=true;
-    $('status').textContent='✅ Ready';
+    $('status').textContent=`✅ ${settings.width}×${settings.height}`;
     return true;
   }catch(e){
     $('status').textContent='⚠️ '+e.message;
@@ -485,7 +489,8 @@ async function listCameras(){
    ──────────────────────────────────────────────── */
 function drawCamera(){
   ctx.save();
-  ctx.translate(W,0); ctx.scale(-1,1);
+  /* mirror only for front (selfie) cameras — keep back-cam un-mirrored */
+  if (isFrontCamera) { ctx.translate(W,0); ctx.scale(-1,1); }
   if(video.readyState>=2){
     const vw=video.videoWidth||640, vh=video.videoHeight||480;
     const vAR=vw/vh, cAR=W/H;
@@ -500,31 +505,6 @@ function drawCamera(){
   }
   ctx.restore();
 
-  /* face swap overlay */
-  if(faceMode!=='normal'){
-    const emoji = FACE_EMOJI[faceMode];
-    if(emoji && emoji!=='—'){
-      /* use detected face if available + fresh, else fallback to top-center */
-      const fresh = face && (Date.now() - (face.t||0) < 800);
-      const fx = fresh ? face.x : W*.5;
-      const fy = fresh ? face.y : H*.32;
-      const fw = fresh ? face.w : W*.42;
-      const size = fw * 1.45;
-      ctx.save();
-      /* soft glow halo */
-      const grad = ctx.createRadialGradient(fx,fy, size*0.15, fx,fy, size*0.65);
-      grad.addColorStop(0,'rgba(255,255,255,.22)');
-      grad.addColorStop(1,'rgba(255,255,255,0)');
-      ctx.fillStyle=grad;
-      ctx.beginPath(); ctx.arc(fx,fy,size*.65,0,Math.PI*2); ctx.fill();
-      /* emoji */
-      ctx.font=`${size}px Arial`;
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=22; ctx.shadowOffsetY=8;
-      ctx.fillText(emoji, fx, fy);
-      ctx.restore();
-    }
-  }
 }
 
 /* ────────────────────────────────────────────────
@@ -1572,7 +1552,7 @@ function startRecording(){
     stream = new MediaStream([...vs.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
   }
   savedMime = pickMime();
-  const opts = { videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 128_000 };
+  const opts = { videoBitsPerSecond: 9_000_000, audioBitsPerSecond: 192_000 };
   if (savedMime) opts.mimeType = savedMime;
   try { mediaRecorder = new MediaRecorder(stream, opts); }
   catch(e){ mediaRecorder = new MediaRecorder(stream); savedMime='video/webm'; }
@@ -1611,24 +1591,7 @@ function stopRecording(){
   $('status').textContent='Saving…';
 }
 
-/* ────────────────────────────────────────────────
-   FACE PANEL UI
-   ──────────────────────────────────────────────── */
-function buildFacePanel(){
-  const el=$('faceGrid'); el.innerHTML='';
-  FACE_OPTS.forEach(([k,e])=>{
-    const d=document.createElement('div');
-    d.className='face-opt'+(faceMode===k?' active':'');
-    d.dataset.k=k; d.textContent=e;
-    d.title=k;
-    d.onclick=()=>{
-      faceMode=k;
-      document.querySelectorAll('.face-opt').forEach(x=>x.classList.remove('active'));
-      d.classList.add('active');
-    };
-    el.appendChild(d);
-  });
-}
+function buildFacePanel(){ /* face swap removed */ }
 
 /* ────────────────────────────────────────────────
    SHARE
@@ -1696,6 +1659,24 @@ document.querySelectorAll('.t-btn').forEach(el=>el.addEventListener('click',()=>
   el.classList.add('active'); timerMode=el.dataset.mode;
 }));
 $('camSelect').addEventListener('change',()=>startCamera($('camSelect').value));
+$('flipBtn').addEventListener('click', async ()=>{
+  /* toggle facing mode by re-requesting */
+  const wantFront = !isFrontCamera;
+  try {
+    if (video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+    const s = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: wantFront?'user':'environment',
+              width:{ideal:1920}, height:{ideal:1080}},
+      audio:false
+    });
+    video.srcObject=s; await video.play();
+    const settings = s.getVideoTracks()[0].getSettings();
+    currentCamId = settings.deviceId;
+    isFrontCamera = wantFront;
+    $('status').textContent = `✅ ${wantFront?'Front':'Back'} · ${settings.width}×${settings.height}`;
+    listCameras();
+  } catch(e) { $('status').textContent = '⚠️ '+e.message; }
+});
 
 /* canvas tap on home (mobile) → start that game */
 canvas.addEventListener('click', e=>{
