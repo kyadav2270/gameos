@@ -1700,6 +1700,11 @@ $('refreshCamBtn').addEventListener('click', async ()=>{
 if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
   navigator.mediaDevices.addEventListener('devicechange', listCameras);
 }
+/* re-scan when tab regains focus (user just woke iPhone) */
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) listCameras(); });
+window.addEventListener('focus', listCameras);
+/* poll a few times after first load — Continuity Camera may take seconds to announce */
+[1500, 3500, 7000].forEach(ms => setTimeout(listCameras, ms));
 $('flipBtn').addEventListener('click', async ()=>{
   const wantFacing = isFrontCamera ? 'environment' : 'user';
   await startCamera(null, wantFacing);
