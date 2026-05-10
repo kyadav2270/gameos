@@ -172,6 +172,7 @@
   <div class="divider"></div>
   <div class="sec">Camera</div>
   <select id="camSelect"><option>Loading…</option></select>
+  <button class="btn toggle-btn" id="refreshCamBtn" style="font-size:11px">🔄 Refresh list</button>
 
   <button class="btn toggle-btn" id="flipBtn">🔄 Flip Camera</button>
 
@@ -1684,6 +1685,20 @@ document.querySelectorAll('.t-btn').forEach(el=>el.addEventListener('click',()=>
   el.classList.add('active'); timerMode=el.dataset.mode;
 }));
 $('camSelect').addEventListener('change',()=>startCamera($('camSelect').value));
+$('refreshCamBtn').addEventListener('click', async ()=>{
+  $('status').textContent='🔄 Scanning…';
+  try {
+    /* trigger fresh permission/labels then re-enumerate */
+    const tmp = await navigator.mediaDevices.getUserMedia({video:true});
+    tmp.getTracks().forEach(t=>t.stop());
+  } catch(_){}
+  await listCameras();
+  $('status').textContent='✅ Camera list refreshed';
+});
+/* auto-refresh dropdown when iPhone Continuity Camera activates / disconnects */
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', listCameras);
+}
 $('flipBtn').addEventListener('click', async ()=>{
   /* toggle facing mode by re-requesting */
   const wantFront = !isFrontCamera;
