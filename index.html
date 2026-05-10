@@ -1682,14 +1682,19 @@ document.querySelectorAll('.t-btn').forEach(el=>el.addEventListener('click',()=>
 }));
 $('camSelect').addEventListener('change',()=>startCamera($('camSelect').value));
 $('refreshCamBtn').addEventListener('click', async ()=>{
-  $('status').textContent='🔄 Scanning…';
-  try {
-    /* trigger fresh permission/labels then re-enumerate */
-    const tmp = await navigator.mediaDevices.getUserMedia({video:true});
-    tmp.getTracks().forEach(t=>t.stop());
-  } catch(_){}
-  await listCameras();
-  $('status').textContent='✅ Camera list refreshed';
+  $('status').textContent='🔄 Scanning iPhone…';
+  /* retry a few times — Continuity Camera takes a moment to announce after wake */
+  for (let i=0;i<3;i++) {
+    try {
+      const tmp = await navigator.mediaDevices.getUserMedia({video:true});
+      tmp.getTracks().forEach(t=>t.stop());
+    } catch(_){}
+    await listCameras();
+    const cnt = $('camSelect').options.length;
+    if (cnt >= 2) { $('status').textContent=`✅ ${cnt} cameras found`; return; }
+    await new Promise(r=>setTimeout(r,1200));
+  }
+  $('status').textContent='Only 1 cam · Wake iPhone & retry';
 });
 /* auto-refresh dropdown when iPhone Continuity Camera activates / disconnects */
 if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
