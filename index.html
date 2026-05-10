@@ -446,35 +446,31 @@ async function pumpFrames(){
 }
 
 let currentCamId=null;
-/* track which camera so we know whether to mirror */
-let isFrontCamera = !IS_MOBILE; /* laptop=front (mirror), mobile=back default (no mirror) */
+let isFrontCamera = true;   /* default mirrored — most cameras */
 
-async function startCamera(deviceId){
+async function startCamera(deviceId, facingPref){
   try{
     if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
-    /* high-quality always: ask for 1080p */
-    const want = IS_MOBILE ? 'environment' : 'user';
-    const constraints={
+    /* CRAVE pattern: facingMode 'user' by default, 720p mobile / 1080p laptop */
+    const W_ideal = IS_MOBILE ? 720  : 1920;
+    const H_ideal = IS_MOBILE ? 1280 : 1080;
+    const constraints = {
       video: deviceId
-        ? {deviceId:{exact:deviceId},
-           width:{ideal:1920}, height:{ideal:1080},
-           frameRate:{ideal:30}}
-        : {facingMode: want,
-           width:{ideal:1920}, height:{ideal:1080},
-           frameRate:{ideal:30}},
+        ? {deviceId:{exact:deviceId}, width:{ideal:W_ideal}, height:{ideal:H_ideal}}
+        : {facingMode: facingPref || 'user', width:{ideal:W_ideal}, height:{ideal:H_ideal}},
       audio:false
     };
-    const s=await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject=s; await video.play();
+    const s = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = s; await video.play();
     const settings = s.getVideoTracks()[0].getSettings();
     currentCamId = deviceId || settings.deviceId;
-    /* detect front vs back from facingMode */
-    isFrontCamera = settings.facingMode ? (settings.facingMode==='user') : !IS_MOBILE;
-    cameraOK=true;
-    $('status').textContent=`✅ ${settings.width}×${settings.height}`;
+    /* infer mirror: 'environment' = back cam, do not mirror */
+    isFrontCamera = settings.facingMode ? (settings.facingMode==='user') : true;
+    cameraOK = true;
+    $('status').textContent = `✅ ${settings.width||'?'}×${settings.height||'?'}`;
     return true;
-  }catch(e){
-    $('status').textContent='⚠️ '+e.message;
+  } catch(e){
+    $('status').textContent = '⚠️ '+e.message;
     return false;
   }
 }
@@ -1700,22 +1696,9 @@ if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
   navigator.mediaDevices.addEventListener('devicechange', listCameras);
 }
 $('flipBtn').addEventListener('click', async ()=>{
-  /* toggle facing mode by re-requesting */
-  const wantFront = !isFrontCamera;
-  try {
-    if (video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
-    const s = await navigator.mediaDevices.getUserMedia({
-      video: {facingMode: wantFront?'user':'environment',
-              width:{ideal:1920}, height:{ideal:1080}},
-      audio:false
-    });
-    video.srcObject=s; await video.play();
-    const settings = s.getVideoTracks()[0].getSettings();
-    currentCamId = settings.deviceId;
-    isFrontCamera = wantFront;
-    $('status').textContent = `✅ ${wantFront?'Front':'Back'} · ${settings.width}×${settings.height}`;
-    listCameras();
-  } catch(e) { $('status').textContent = '⚠️ '+e.message; }
+  const wantFacing = isFrontCamera ? 'environment' : 'user';
+  await startCamera(null, wantFacing);
+  listCameras();
 });
 
 /* canvas tap on home (mobile) → start that game */
