@@ -177,7 +177,7 @@
        style="display:none"></audio>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/face_detection.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
 
 <script>
 /* ╔══════════════════════════════════════════════════════════════════════╗
@@ -385,27 +385,31 @@ try{
 }catch(e){console.warn('Hands init',e);}
 
 try{
-  mpFace=new FaceDetection({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/${f}`});
-  mpFace.setOptions({model:'short', minDetectionConfidence:.5});
-  mpFace.onResults(r=>{
-    if(!r.detections || !r.detections.length){ face=null; return; }
-    const d = r.detections[0];
-    const bb = d.boundingBox;
-    const vw=video.videoWidth||640, vh=video.videoHeight||480;
-    /* bb center and size in normalized video coords */
-    const vx = bb.xCenter*vw, vy = bb.yCenter*vh;
-    const vw2= bb.width*vw,    vh2= bb.height*vh;
-    if(cropParams){
-      const fx = (1-(vx-cropParams.sx)/cropParams.sw)*W;
-      const fy = (vy-cropParams.sy)/cropParams.sh*H;
-      const fw = vw2/cropParams.sw*W;
-      const fh = vh2/cropParams.sh*H;
-      face = {x:fx,y:fy,w:fw,h:fh};
-    } else {
-      face = {x:(1-bb.xCenter)*W, y:bb.yCenter*H, w:bb.width*W, h:bb.height*H};
-    }
-  });
-}catch(e){console.warn('Face init',e);}
+  if (typeof FaceDetection !== 'undefined') {
+    mpFace=new FaceDetection({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${f}`});
+    mpFace.setOptions({model:'short', minDetectionConfidence: IS_MOBILE?.3:.5});
+    mpFace.onResults(r=>{
+      if(!r.detections || !r.detections.length){ /* keep last face for stability */ return; }
+      const d = r.detections[0];
+      const bb = d.boundingBox;
+      const vw=video.videoWidth||640, vh=video.videoHeight||480;
+      const vx = bb.xCenter*vw, vy = bb.yCenter*vh;
+      const vw2= bb.width*vw,    vh2= bb.height*vh;
+      if(cropParams){
+        const fx = (1-(vx-cropParams.sx)/cropParams.sw)*W;
+        const fy = (vy-cropParams.sy)/cropParams.sh*H;
+        const fw = vw2/cropParams.sw*W;
+        const fh = vh2/cropParams.sh*H;
+        face = {x:fx,y:fy,w:fw,h:fh, t:Date.now()};
+      } else {
+        face = {x:(1-bb.xCenter)*W, y:bb.yCenter*H, w:bb.width*W, h:bb.height*H, t:Date.now()};
+      }
+    });
+    console.log('FaceDetection ready');
+  } else {
+    console.warn('FaceDetection global not found — using fallback positioning');
+  }
+}catch(e){console.warn('Face init failed',e); mpFace=null;}
 
 /* flatten all fingertip points across both hands for easy collision tests */
 function allHandPts(){
@@ -497,22 +501,27 @@ function drawCamera(){
   ctx.restore();
 
   /* face swap overlay */
-  if(faceMode!=='normal' && face){
+  if(faceMode!=='normal'){
     const emoji = FACE_EMOJI[faceMode];
     if(emoji && emoji!=='—'){
-      const size = face.w * 1.45;
+      /* use detected face if available + fresh, else fallback to top-center */
+      const fresh = face && (Date.now() - (face.t||0) < 800);
+      const fx = fresh ? face.x : W*.5;
+      const fy = fresh ? face.y : H*.32;
+      const fw = fresh ? face.w : W*.42;
+      const size = fw * 1.45;
       ctx.save();
-      /* soft glow halo behind */
-      const grad = ctx.createRadialGradient(face.x,face.y, size*0.15, face.x,face.y, size*0.6);
-      grad.addColorStop(0,'rgba(255,255,255,.18)');
+      /* soft glow halo */
+      const grad = ctx.createRadialGradient(fx,fy, size*0.15, fx,fy, size*0.65);
+      grad.addColorStop(0,'rgba(255,255,255,.22)');
       grad.addColorStop(1,'rgba(255,255,255,0)');
       ctx.fillStyle=grad;
-      ctx.beginPath(); ctx.arc(face.x,face.y,size*.6,0,Math.PI*2); ctx.fill();
-      /* emoji with shadow for depth */
+      ctx.beginPath(); ctx.arc(fx,fy,size*.65,0,Math.PI*2); ctx.fill();
+      /* emoji */
       ctx.font=`${size}px Arial`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=20; ctx.shadowOffsetY=8;
-      ctx.fillText(emoji, face.x, face.y);
+      ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=22; ctx.shadowOffsetY=8;
+      ctx.fillText(emoji, fx, fy);
       ctx.restore();
     }
   }
@@ -1412,10 +1421,10 @@ function drawBg(g){
   if (g) {
     ctx.fillStyle='#06060c'; ctx.fillRect(0,0,W,H);
     drawCamera();
-    /* brand-tinted overlay using game's hue */
-    const ov=ctx.createLinearGradient(0,0,0,H);
-    ov.addColorStop(0, `hsla(${g.hue}, 70%, 8%, .65)`);
-    ov.addColorStop(1, `hsla(${g.hue}, 60%, 4%, .8)`);
+    /* very light brand-tinted vignette — keeps face bright */
+    const ov=ctx.createRadialGradient(W/2,H/2, H*.3, W/2,H/2, H*.75);
+    ov.addColorStop(0, 'rgba(0,0,0,0)');
+    ov.addColorStop(1, `hsla(${g.hue}, 60%, 6%, .55)`);
     ctx.fillStyle=ov; ctx.fillRect(0,0,W,H);
   } else {
     /* on home, no camera by default — just gradient */
