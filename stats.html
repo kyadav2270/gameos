@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GameOS — Live Stats</title>
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    body{
+      background:#06060c;color:#fff;
+      font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+      min-height:100vh;padding:24px 16px;
+    }
+    .wrap{max-width:680px;margin:0 auto;text-align:center}
+    h1{
+      font-size:54px;font-weight:900;letter-spacing:1px;
+      background:linear-gradient(90deg,#a855f7,#ec4899,#f97316);
+      -webkit-background-clip:text;background-clip:text;color:transparent;
+      margin-bottom:6px;
+    }
+    .sub{color:rgba(255,255,255,.5);font-size:13px;margin-bottom:30px}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:24px}
+    .card{
+      background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+      border-radius:16px;padding:20px 14px;
+    }
+    .lbl{font-size:10px;font-weight:700;color:rgba(255,255,255,.45);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px}
+    .num{font-size:42px;font-weight:900;color:#fff}
+    .num.loading{color:rgba(255,255,255,.2)}
+    h2{font-size:18px;font-weight:700;margin:24px 0 12px;color:rgba(255,255,255,.85);text-align:left}
+    .gametable{
+      background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+      border-radius:14px;overflow:hidden;
+    }
+    .gametable .row{
+      display:grid;grid-template-columns:50px 1fr 80px 80px 80px;
+      gap:8px;align-items:center;padding:13px 14px;
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .gametable .row:last-child{border:0}
+    .gametable .row.head{background:rgba(255,255,255,.03);font-size:10px;color:rgba(255,255,255,.45);letter-spacing:1px;text-transform:uppercase}
+    .gametable .row .e{font-size:24px}
+    .gametable .row .nm{font-weight:700;color:#fff;text-align:left;font-size:13px}
+    .gametable .row .v{font-weight:800;color:#fff;text-align:right;font-size:14px}
+    .gametable .row .v.muted{color:rgba(255,255,255,.45);font-weight:500}
+    a.play{
+      display:inline-block;margin-top:30px;padding:14px 30px;
+      background:linear-gradient(135deg,#a855f7,#ec4899);
+      color:#fff;text-decoration:none;border-radius:14px;
+      font-weight:800;font-size:14px;letter-spacing:.5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>GameOS</h1>
+    <div class="sub">Live community stats · refreshes every 30s</div>
+
+    <div class="grid">
+      <div class="card"><div class="lbl">👀 Visits</div><div class="num loading" id="visits">—</div></div>
+      <div class="card"><div class="lbl">▶ Plays Started</div><div class="num loading" id="starts">—</div></div>
+      <div class="card"><div class="lbl">🏁 Games Done</div><div class="num loading" id="completes">—</div></div>
+      <div class="card"><div class="lbl">⬇ Downloads</div><div class="num loading" id="downloads">—</div></div>
+    </div>
+
+    <h2>Per Game</h2>
+    <div class="gametable" id="gameTable">
+      <div class="row head">
+        <div></div><div class="nm">Game</div>
+        <div class="v">Opens</div><div class="v">Plays</div><div class="v">Done</div>
+      </div>
+    </div>
+
+    <a href="./" class="play">▶ Play GameOS</a>
+  </div>
+
+<script>
+const NS='gameos-kyadav2270';
+const GAMES = [
+  {id:'balloon', emoji:'🎈', name:'Balloon Pop'},
+  {id:'catch',   emoji:'🍔', name:'Catch'},
+  {id:'slice',   emoji:'🍉', name:'Fruit Slice'},
+  {id:'whack',   emoji:'🦟', name:'Mosquito Smash'},
+];
+async function get(k){
+  try{
+    const r=await fetch(`https://abacus.jasoncameron.dev/get/${NS}/${k}`);
+    const j=await r.json();
+    return j.value||0;
+  }catch(_){ return 0; }
+}
+const fmt = n=>n.toLocaleString();
+
+async function refresh(){
+  const [v,s,c,d] = await Promise.all([
+    get('visits'), get('starts'), get('completes'), get('downloads')
+  ]);
+  /* note: starts/completes/downloads aggregate across games via per-game keys —
+     we sum per-game counts to get total */
+  const per = await Promise.all(GAMES.map(async g=>{
+    const [opens, starts, completes] = await Promise.all([
+      get('open_'+g.id), get('start_'+g.id), get('complete_'+g.id)
+    ]);
+    return {...g, opens, starts, completes};
+  }));
+  const totalStarts = per.reduce((a,g)=>a+g.starts,0);
+  const totalCompletes = per.reduce((a,g)=>a+g.completes,0);
+
+  document.getElementById('visits').textContent = fmt(v);
+  document.getElementById('starts').textContent = fmt(totalStarts || s);
+  document.getElementById('completes').textContent = fmt(totalCompletes || c);
+  document.getElementById('downloads').textContent = fmt(d);
+  document.querySelectorAll('.num').forEach(el=>el.classList.remove('loading'));
+
+  /* per-game table */
+  const tbl = document.getElementById('gameTable');
+  /* keep header */
+  tbl.innerHTML = `<div class="row head"><div></div><div class="nm">Game</div><div class="v">Opens</div><div class="v">Plays</div><div class="v">Done</div></div>`;
+  for (const g of per) {
+    tbl.innerHTML += `
+      <div class="row">
+        <div class="e">${g.emoji}</div>
+        <div class="nm">${g.name}</div>
+        <div class="v ${g.opens?'':'muted'}">${fmt(g.opens)}</div>
+        <div class="v ${g.starts?'':'muted'}">${fmt(g.starts)}</div>
+        <div class="v ${g.completes?'':'muted'}">${fmt(g.completes)}</div>
+      </div>`;
+  }
+}
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>
