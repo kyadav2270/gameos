@@ -217,102 +217,215 @@ function drawCamera(){
   ctx.restore();
 }
 
-/* STADIUM (drawn on top of camera) */
+/* ═══ ADVANCED STADIUM ═══ */
+let netRipple = 0; /* increases on goal, decays */
 function drawStadium(){
-  /* sky gradient at top */
-  const sky=ctx.createLinearGradient(0,0,0,H*.4);
-  sky.addColorStop(0,'rgba(15,30,60,.55)');
-  sky.addColorStop(1,'rgba(15,30,60,0)');
-  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H*.4);
-
-  /* floodlight glow corners */
-  for(let i=0;i<4;i++){
-    const x=i%2===0?80:W-80, y=60;
-    const g=ctx.createRadialGradient(x,y,5,x,y,160);
-    g.addColorStop(0,'rgba(255,255,200,.35)');
-    g.addColorStop(1,'rgba(255,255,200,0)');
-    ctx.fillStyle=g;ctx.fillRect(x-160,y-160,320,320);
-  }
-
-  /* CROWD silhouette at top */
-  const crowdY=H*.18;
-  const cgrad=ctx.createLinearGradient(0,crowdY,0,crowdY+30);
-  cgrad.addColorStop(0,'rgba(20,15,25,.7)');
-  cgrad.addColorStop(1,'rgba(20,15,25,0)');
-  ctx.fillStyle=cgrad;
-  ctx.fillRect(0,crowdY,W,30);
-  /* tiny dot crowd */
-  for(let i=0;i<60;i++){
-    const x=i*(W/60)+(Math.sin(Date.now()/600+i)*.5);
-    ctx.beginPath();ctx.arc(x,crowdY+5+(i%3)*4,2.5,0,Math.PI*2);
-    ctx.fillStyle=`rgba(${30+i%20},${20+(i*7)%30},${40+i%30},.6)`;ctx.fill();
-  }
-
-  /* GOAL POST — front-facing perspective */
-  drawGoalPost();
+  drawSky();
+  drawFloodlights();
+  drawStands();
+  drawBillboards();
+  drawPitch();
+  drawGoal();
 }
-function drawGoalPost(){
-  /* goal at upper-center, perspective looking out from goal */
-  const gx=W*.5, gy=H*.32, gw=W*.78, gh=H*.28;
-  const left=gx-gw/2, right=gx+gw/2, top=gy-gh/2, bot=gy+gh/2;
-
-  /* NET — diagonal mesh lines */
-  ctx.save();
-  ctx.strokeStyle='rgba(255,255,255,.15)';
-  ctx.lineWidth=1;
-  /* vertical strands */
-  const cols=14;
-  for(let i=0;i<=cols;i++){
-    const x=left+(right-left)*(i/cols);
-    /* perspective: net stretches back, top closer */
-    ctx.beginPath();ctx.moveTo(x,top);
-    ctx.lineTo(left+(right-left)*(i/cols)*0.9+W*.05, bot);
-    ctx.stroke();
+function drawSky(){
+  /* deep dusk gradient */
+  const sky=ctx.createLinearGradient(0,0,0,H*.5);
+  sky.addColorStop(0,'rgba(8,14,38,.85)');
+  sky.addColorStop(.35,'rgba(28,32,72,.7)');
+  sky.addColorStop(.7,'rgba(60,30,80,.4)');
+  sky.addColorStop(1,'rgba(60,30,80,0)');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H*.45);
+  /* twinkling stars */
+  for(let i=0;i<35;i++){
+    const x=(i*137)%W, y=(i*73)%(H*.12);
+    const tw=.4+.6*Math.abs(Math.sin(Date.now()/700+i*.5));
+    ctx.beginPath();ctx.arc(x,y,1.3,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${tw*.55})`;ctx.fill();
   }
-  /* horizontal strands */
-  const rows=8;
-  for(let i=0;i<=rows;i++){
-    const y=top+(bot-top)*(i/rows);
-    ctx.beginPath();ctx.moveTo(left+(i/rows)*W*.04, y);
-    ctx.lineTo(right-(i/rows)*W*.04, y);
-    ctx.stroke();
+}
+function drawFloodlights(){
+  /* light cones descending from upper corners */
+  const lights=[{x:30,y:25,ang:0.35,sx:1},{x:W-30,y:25,ang:-0.35,sx:-1}];
+  for(const L of lights){
+    ctx.save();
+    ctx.translate(L.x,L.y);
+    /* the cone */
+    const cone=ctx.createLinearGradient(0,0,L.sx*180,H*.5);
+    cone.addColorStop(0,'rgba(255,250,200,.32)');
+    cone.addColorStop(.5,'rgba(255,250,200,.1)');
+    cone.addColorStop(1,'rgba(255,250,200,0)');
+    ctx.fillStyle=cone;
+    ctx.beginPath();
+    ctx.moveTo(-15,0);ctx.lineTo(15,0);
+    ctx.lineTo(L.sx*220,H*.5);ctx.lineTo(L.sx*(-50),H*.5);
+    ctx.closePath();ctx.fill();
+    /* lamp bloom */
+    const bloom=ctx.createRadialGradient(0,0,4,0,0,55);
+    bloom.addColorStop(0,'rgba(255,255,220,.95)');
+    bloom.addColorStop(.5,'rgba(255,255,180,.4)');
+    bloom.addColorStop(1,'rgba(255,255,180,0)');
+    ctx.fillStyle=bloom;ctx.fillRect(-55,-55,110,110);
+    ctx.restore();
   }
-  ctx.restore();
-
-  /* GOAL POSTS - thick white frame */
+}
+function drawStands(){
+  /* 3-tier stadium silhouette with animated mexican wave */
+  const tiers=[
+    {y:H*.14, h:22, c:'#080814', n:55},
+    {y:H*.165, h:24, c:'#0e0e22', n:48},
+    {y:H*.195, h:26, c:'#1a1c30', n:42},
+  ];
+  const waveT = Date.now()/450;
+  for(let t=0;t<tiers.length;t++){
+    const T=tiers[t];
+    ctx.fillStyle=T.c;ctx.fillRect(0,T.y,W,T.h);
+    /* crowd dots */
+    for(let i=0;i<T.n;i++){
+      const x=i*(W/T.n)+Math.sin(Date.now()/(900+t*150)+i)*.6;
+      /* mexican wave: bright dot rolls across */
+      const wavePhase = ((i/T.n)*Math.PI*2 - waveT*.5) % (Math.PI*2);
+      const wave = wavePhase>0 && wavePhase<1 ? Math.sin(wavePhase*Math.PI) : 0;
+      const cy = T.y + 6 + (t*2) - wave*4;
+      const bright = wave>.5;
+      ctx.beginPath();
+      ctx.arc(x,cy, 2.2+t*.25, 0, Math.PI*2);
+      if(bright){ ctx.fillStyle='rgba(255,255,255,.95)'; ctx.shadowColor='#fff'; ctx.shadowBlur=4; }
+      else      { ctx.fillStyle=`rgba(${90+i*3%80},${70+i*7%60},${50+i*5%80},.7)`; }
+      ctx.fill();
+      if(bright)ctx.shadowBlur=0;
+    }
+  }
+}
+function drawBillboards(){
+  /* LED advertising boards at far field edge */
+  const y0 = H*.245, bh = 18;
+  const boards=[
+    {x:0,        w:W*.32, c1:'#7f1d1d', c2:'#dc2626', t:'GAMEOS.PLAY'},
+    {x:W*.32,    w:W*.36, c1:'#064e3b', c2:'#22c55e', t:'#GOALKEEPER'},
+    {x:W*.68,    w:W*.32, c1:'#78350f', c2:'#f59e0b', t:'KICK • SCORE'},
+  ];
+  /* base shadow */
+  ctx.fillStyle='rgba(0,0,0,.5)';
+  ctx.fillRect(0, y0+bh, W, 4);
+  for(const b of boards){
+    /* gradient board with subtle scroll */
+    const g = ctx.createLinearGradient(b.x, y0, b.x+b.w, y0);
+    g.addColorStop(0, b.c1); g.addColorStop(1, b.c2);
+    ctx.fillStyle=g; ctx.fillRect(b.x, y0, b.w, bh);
+    /* shine sweep */
+    const shineX = b.x + ((Date.now()/30 + b.x*2) % (b.w+40)) - 20;
+    const sg = ctx.createLinearGradient(shineX-20, y0, shineX+20, y0);
+    sg.addColorStop(0,'rgba(255,255,255,0)');
+    sg.addColorStop(.5,'rgba(255,255,255,.25)');
+    sg.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=sg;
+    ctx.save();ctx.beginPath();ctx.rect(b.x,y0,b.w,bh);ctx.clip();
+    ctx.fillRect(shineX-20, y0, 40, bh);
+    ctx.restore();
+    /* text */
+    ctx.fillStyle='#fff';
+    ctx.font='900 9.5px Arial';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.shadowColor='rgba(0,0,0,.6)';ctx.shadowBlur=2;
+    ctx.fillText(b.t, b.x+b.w/2, y0+bh/2);
+    ctx.shadowBlur=0;
+  }
+}
+function drawPitch(){
+  const py0 = H*.45, py1 = H;
+  /* base grass with depth */
+  const grass = ctx.createLinearGradient(0,py0,0,py1);
+  grass.addColorStop(0,'rgba(15,75,30,.45)');
+  grass.addColorStop(1,'rgba(5,30,10,.7)');
+  ctx.fillStyle=grass;ctx.fillRect(0,py0,W,py1-py0);
+  /* mowing stripes with perspective */
+  for(let i=0;i<14;i++){
+    const t1=i/14, t2=(i+1)/14;
+    const y1=py0+Math.pow(t1,1.6)*(py1-py0);
+    const y2=py0+Math.pow(t2,1.6)*(py1-py0);
+    if(i%2===0){
+      ctx.fillStyle='rgba(45,130,55,.16)';
+      ctx.fillRect(0,y1,W,y2-y1);
+    }
+  }
+  /* pitch lines with perspective (trapezoid) */
   ctx.save();
-  ctx.strokeStyle='#fff';
-  ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=12;
-  ctx.lineWidth=8;ctx.lineCap='round';
-  /* top crossbar */
-  ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(right,top);ctx.stroke();
-  /* left post */
-  ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(left,bot);ctx.stroke();
-  /* right post */
-  ctx.beginPath();ctx.moveTo(right,top);ctx.lineTo(right,bot);ctx.stroke();
-  ctx.restore();
-
-  /* PITCH lines below — penalty area */
-  ctx.save();
-  ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=3;
-  ctx.shadowColor='rgba(0,0,0,.4)';ctx.shadowBlur=6;
-  /* goal line */
-  ctx.beginPath();ctx.moveTo(0,bot);ctx.lineTo(W,bot);ctx.stroke();
-  /* penalty arc/box */
-  const pyA=bot, pyB=bot+H*.16;
+  ctx.strokeStyle='rgba(255,255,255,.55)';
+  ctx.lineWidth=3;
+  ctx.shadowColor='rgba(0,0,0,.4)';ctx.shadowBlur=5;
+  /* goal line at top of pitch */
+  ctx.beginPath();ctx.moveTo(0,py0);ctx.lineTo(W,py0);ctx.stroke();
+  /* penalty box - trapezoid */
+  const pby1=py0, pby2=py0+(py1-py0)*.45;
   ctx.beginPath();
-  ctx.moveTo(W*.1,pyA);ctx.lineTo(W*.1,pyB);
-  ctx.lineTo(W*.9,pyB);ctx.lineTo(W*.9,pyA);
+  ctx.moveTo(W*.18,pby1);ctx.lineTo(W*.05,pby2);
+  ctx.moveTo(W*.82,pby1);ctx.lineTo(W*.95,pby2);
+  ctx.moveTo(W*.05,pby2);ctx.lineTo(W*.95,pby2);
   ctx.stroke();
-  /* 6-yard */
-  const pyC=bot+H*.07;
+  /* 6-yard box */
+  const pby3=py0+(py1-py0)*.2;
   ctx.beginPath();
-  ctx.moveTo(W*.28,pyA);ctx.lineTo(W*.28,pyC);
-  ctx.lineTo(W*.72,pyC);ctx.lineTo(W*.72,pyA);
+  ctx.moveTo(W*.33,pby1);ctx.lineTo(W*.28,pby3);
+  ctx.moveTo(W*.67,pby1);ctx.lineTo(W*.72,pby3);
+  ctx.moveTo(W*.28,pby3);ctx.lineTo(W*.72,pby3);
   ctx.stroke();
   /* penalty spot */
-  ctx.beginPath();ctx.arc(W*.5,bot+H*.11,3.5,0,Math.PI*2);
+  ctx.beginPath();ctx.arc(W*.5,py0+(py1-py0)*.32,4,0,Math.PI*2);
   ctx.fillStyle='#fff';ctx.fill();
+  /* penalty arc */
+  ctx.beginPath();
+  ctx.arc(W*.5,py0+(py1-py0)*.32,W*.13,Math.PI*1.15,Math.PI*1.85);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawGoal(){
+  const gx=W*.5, gy=H*.34, gw=W*.78, gh=H*.26;
+  const left=gx-gw/2, right=gx+gw/2;
+  const top=gy-gh/2, bot=gy+gh/2;
+  /* INSIDE GOAL — dark depth trapezoid */
+  ctx.save();
+  const dep=ctx.createLinearGradient(0,top,0,bot);
+  dep.addColorStop(0,'rgba(0,0,0,.7)');dep.addColorStop(1,'rgba(0,0,0,.92)');
+  ctx.fillStyle=dep;
+  ctx.beginPath();
+  ctx.moveTo(left+14,top+8);ctx.lineTo(right-14,top+8);
+  ctx.lineTo(right-32,bot-6);ctx.lineTo(left+32,bot-6);
+  ctx.closePath();ctx.fill();
+  ctx.restore();
+  /* NET — denser mesh with depth + ripple effect */
+  ctx.save();
+  const rip = Math.max(0, netRipple);
+  ctx.strokeStyle=`rgba(255,255,255,${.28+rip*.2})`;
+  ctx.lineWidth=1.2;
+  const cols=20;
+  for(let i=0;i<=cols;i++){
+    const t=i/cols;
+    const x1=left+(right-left)*t;
+    const x2=left+32+(right-left-64)*t;
+    /* ripple wave */
+    const wave = rip>0 ? Math.sin(t*Math.PI*4 - Date.now()/80)*rip*4 : 0;
+    ctx.beginPath();ctx.moveTo(x1,top);
+    ctx.quadraticCurveTo((x1+x2)/2+wave,(top+bot)/2, x2,bot);
+    ctx.stroke();
+  }
+  const rows=11;
+  for(let i=0;i<=rows;i++){
+    const t=i/rows;
+    const inset=t*28;
+    const y=top+(bot-top)*t;
+    const wave = rip>0 ? Math.sin(t*Math.PI*3 - Date.now()/80)*rip*3 : 0;
+    ctx.beginPath();ctx.moveTo(left+inset,y+wave);
+    ctx.lineTo(right-inset,y+wave);ctx.stroke();
+  }
+  netRipple = Math.max(0, netRipple - 0.04);
+  ctx.restore();
+  /* GOAL POSTS — thick white with bloom */
+  ctx.save();
+  ctx.shadowColor='rgba(255,255,255,.6)';ctx.shadowBlur=18;
+  ctx.strokeStyle='#fff';ctx.lineWidth=10;ctx.lineCap='square';
+  ctx.beginPath();ctx.moveTo(left-3,top);ctx.lineTo(right+3,top);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(left,top);ctx.lineTo(left,bot);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(right,top);ctx.lineTo(right,bot);ctx.stroke();
   ctx.restore();
 }
 
@@ -390,10 +503,10 @@ function spawnBall(){
   const vx = (targetX-sx)/flightT * .016 * c.spd;
   const vy = (targetY-sy)/flightT * .016 * c.spd;
   balls.push({
-    x:sx, y:sy, r:14, rot:0, rotV:(Math.random()-.5)*.3,
-    vx,vy, scale:.45,
+    x:sx, y:sy, r:24, rot:0, rotV:(Math.random()-.5)*.3,
+    vx,vy, scale:.55,
     saved:false, scored:false, life:1,
-    fxT:0,
+    fxT:0, trail:[],
   });
   sfx.kick();
 }
@@ -423,8 +536,11 @@ function update(d){
   const pts=allHandPts();
   for(const b of balls){
     if(b.saved||b.scored){b.fxT+=d*2.5;if(b.fxT>1)b.life=0;continue;}
-    b.x+=b.vx;b.y+=b.vy;b.scale=Math.min(1.2,b.scale+d*.4);
-    b.r=14*b.scale;b.rot+=b.rotV;
+    b.x+=b.vx;b.y+=b.vy;b.scale=Math.min(1.4,b.scale+d*.4);
+    b.r=24*b.scale;b.rot+=b.rotV;
+    /* trail */
+    b.trail.push({x:b.x,y:b.y,r:b.r*.85});
+    if(b.trail.length>10) b.trail.shift();
     /* check hand collision */
     for(const p of pts){
       if(Math.hypot(p.x-b.x,p.y-b.y)<b.r*1.8){
@@ -446,6 +562,7 @@ function update(d){
       lives=Math.max(0,lives-1);combo=0;
       floatT(W/2,H*.7,'⚽ GOAL!','#ef4444',true);
       shakeFrames=22;shakeAmp=14;flashAlpha=.6;flashCol='239,68,68';
+      netRipple = 1;
       sfx.goal();
       if(timerMode==='endless'&&lives<=0)endGame();
     }
@@ -461,11 +578,23 @@ function draw(){
   drawStadium();
 
   for(const b of balls){
+    /* motion blur trail */
+    if(b.trail && b.trail.length>1 && !b.saved){
+      for(let i=0;i<b.trail.length;i++){
+        const tp=b.trail[i];
+        const a=(i/b.trail.length)*0.4;
+        ctx.save();ctx.globalAlpha=a;
+        ctx.beginPath();ctx.arc(tp.x,tp.y,tp.r*(.5+i/b.trail.length*.5),0,Math.PI*2);
+        const tg=ctx.createRadialGradient(tp.x,tp.y,0,tp.x,tp.y,tp.r);
+        tg.addColorStop(0,'rgba(255,255,255,.6)');tg.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=tg;ctx.fill();ctx.restore();
+      }
+    }
     if(b.saved){
       ctx.save();ctx.globalAlpha=Math.max(0,1-b.fxT);
       const s=1+b.fxT*.6;
       ctx.translate(b.x,b.y);ctx.scale(s,s);
-      ctx.font='40px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.font='60px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText('🧤',0,0);
       ctx.restore();
     }else if(b.scored){
