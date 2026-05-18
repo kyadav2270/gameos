@@ -451,9 +451,9 @@ let isFrontCamera = true;   /* default mirrored — most cameras */
 async function startCamera(deviceId, facingPref){
   try{
     if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
-    /* CRAVE pattern: facingMode 'user' by default, 720p mobile / 1080p laptop */
-    const W_ideal = IS_MOBILE ? 720  : 1920;
-    const H_ideal = IS_MOBILE ? 1280 : 1080;
+    /* request 4K — camera picks best supported (4K on iPhone Continuity, 1080p fallback) */
+    const W_ideal = IS_MOBILE ? 2160 : 3840;
+    const H_ideal = IS_MOBILE ? 3840 : 2160;
     const constraints = {
       video: deviceId
         ? {deviceId:{exact:deviceId}, width:{ideal:W_ideal}, height:{ideal:H_ideal}}
@@ -1561,7 +1561,7 @@ function startRecording(){
     stream = new MediaStream([...vs.getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
   }
   savedMime = pickMime();
-  const opts = { videoBitsPerSecond: 9_000_000, audioBitsPerSecond: 192_000 };
+  const opts = { videoBitsPerSecond: 16_000_000, audioBitsPerSecond: 256_000 };
   if (savedMime) opts.mimeType = savedMime;
   try { mediaRecorder = new MediaRecorder(stream, opts); }
   catch(e){ mediaRecorder = new MediaRecorder(stream); savedMime='video/webm'; }

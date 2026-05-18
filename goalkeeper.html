@@ -177,7 +177,7 @@ let currentCamId=null;
 async function startCamera(deviceId,facingPref){
   try{
     if(video.srcObject)video.srcObject.getTracks().forEach(t=>t.stop());
-    const Wi=IS_MOBILE?720:1920,Hi=IS_MOBILE?1280:1080;
+    const Wi=IS_MOBILE?2160:3840,Hi=IS_MOBILE?3840:2160;
     const c={video:deviceId?{deviceId:{exact:deviceId},width:{ideal:Wi},height:{ideal:Hi}}:{facingMode:facingPref||'user',width:{ideal:Wi},height:{ideal:Hi}},audio:false};
     const s=await navigator.mediaDevices.getUserMedia(c);
     video.srcObject=s;await video.play();
@@ -652,7 +652,7 @@ function startRecording(){
   const vs=canvas.captureStream(30);let stream=vs;
   if(audioDest&&audioDest.stream&&audioDest.stream.getAudioTracks().length){stream=new MediaStream([...vs.getVideoTracks(),...audioDest.stream.getAudioTracks()]);}
   savedMime=pickMime();
-  const opts={videoBitsPerSecond:9_000_000,audioBitsPerSecond:192_000};
+  const opts={videoBitsPerSecond:16_000_000,audioBitsPerSecond:256_000};
   if(savedMime)opts.mimeType=savedMime;
   try{mediaRecorder=new MediaRecorder(stream,opts);}catch(e){mediaRecorder=new MediaRecorder(stream);savedMime='video/webm';}
   mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data);};
