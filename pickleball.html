@@ -172,18 +172,19 @@ function resetBall(){
   rallyCount=0;
 }
 function serveFromAI(){
-  /* AI serves toward player side with arc */
+  /* AI serves toward player side — high arc that clears the net */
   ball.x = FAR_BASELINE_X(0.3+Math.random()*0.4);
   ball.y = FAR_BASELINE+20;
-  ball.height = 80;
-  ball.vh = 6;
+  ball.height = 120;     /* start high */
+  ball.vh = 9;           /* strong lift so it stays above net */
   ball.vx = (W/2 - ball.x)*0.005 + (Math.random()-.5)*0.5;
-  ball.vy = 4.5;
+  ball.vy = 4;
   ball.alive = true;
   ball.side='player';
   lastHitter='ai';
   lastHitTime=performance.now();
   rallyCount++;
+  ball._prevY=ball.y;
   sfx.pop();
 }
 function FAR_BASELINE_X(t){return SAFE.x + SAFE.w*0.25 + t*SAFE.w*0.5;}
@@ -242,37 +243,29 @@ function update(d){
     return;
   }
 
-  /* ball physics */
+  /* ball physics — gentler gravity for proper arc */
+  const prevY = ball._prevY!==undefined?ball._prevY:ball.y;
+  ball._prevY = ball.y;
   ball.x += ball.vx;
   ball.y += ball.vy;
   ball.height += ball.vh;
-  ball.vh -= 0.35; /* gravity on height */
+  ball.vh -= 0.18; /* gentler gravity = better arc */
   /* bounce off ground */
   if(ball.height < 0){
     ball.height = 0;
     ball.vh = Math.abs(ball.vh)*0.6;
     sfx.bounce();
     burstP(ball.x, ball.y, '#22c55e', 5);
-    /* if ball bounces on player's side, player must have hit it back already */
     if(ball.side==='player' && ball.y > NET_Y + 30){
-      /* player missed */
-      if(ball.vh<2){
-        /* second bounce or weak — score for AI */
-        playerMissed();
-        return;
-      }
+      if(ball.vh<2){ playerMissed(); return; }
     }
     if(ball.side==='far' && ball.y < NET_Y - 30){
-      /* AI side bounce — AI should hit */
-      if(ball.vh<2){
-        aiMissed();
-        return;
-      }
+      if(ball.vh<2){ aiMissed(); return; }
     }
   }
-  /* check net collision */
-  if(Math.abs(ball.y-NET_Y) < 4 && ball.height < 35){
-    /* hit the net */
+  /* NET collision — true crossing detection */
+  const crossed = (prevY - NET_Y) * (ball.y - NET_Y) <= 0 && prevY !== ball.y;
+  if(crossed && ball.height < 50){
     sfx.lose();
     floatT(ball.x, ball.y-30, '🪤 NET','#ef4444',true);
     burstP(ball.x, ball.y, '#ef4444', 12);
@@ -298,12 +291,12 @@ function update(d){
   /* AI hit logic — when ball approaches AI side near baseline */
   if(ball.side==='far' && ball.y < FAR_BASELINE+50){
     /* AI hits if close to ai x */
-    if(Math.abs(ball.x - aiX) < 50){
-      /* AI returns */
-      ball.vy = 4.5 + Math.random()*1;
+    if(Math.abs(ball.x - aiX) < 60){
+      /* AI returns — strong arc that clears the net */
+      ball.vy = 4 + Math.random()*1;
       ball.vx = (Math.random()-.5)*2 + (W/2-ball.x)*0.003;
-      ball.vh = 7+Math.random()*2;
-      ball.height = Math.max(ball.height, 60);
+      ball.vh = 9 + Math.random()*2;
+      ball.height = Math.max(ball.height, 100);
       ball.side = 'player';
       lastHitter='ai'; lastHitTime=performance.now();
       rallyCount++;
@@ -332,12 +325,12 @@ function update(d){
           const pv = Math.hypot(pdx,pdy);
           if(pv>2){sv={x:pdx,y:pdy,speed:pv}; break;}
         }
-        /* send ball back toward AI */
+        /* send ball back toward AI — high arc that clears net */
         const power = 4 + Math.min(6, sv.speed*0.3);
         ball.vy = -power;
         ball.vx = sv.x*0.4 + (aiX - ball.x)*0.008;
-        ball.vh = 8 + Math.min(6, sv.speed*0.4);
-        ball.height = Math.max(ball.height, 80);
+        ball.vh = 10 + Math.min(6, sv.speed*0.4);
+        ball.height = Math.max(ball.height, 110);
         ball.side='far';
         lastHitter='player';lastHitTime=performance.now();
         rallyCount++;
