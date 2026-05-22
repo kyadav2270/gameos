@@ -735,22 +735,8 @@ function loop(ts){
   if(shakeFrames>0){const a=shakeAmp*(shakeFrames/22);ctx.translate((Math.random()-.5)*a,(Math.random()-.5)*a);shakeFrames--;}
 
   if(gameState==='ready'){
-    drawCamera();
-    ctx.fillStyle='rgba(0,0,10,.55)';ctx.fillRect(0,0,W,H);
-    drawStadium();
-    ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.font='80px Arial';ctx.fillText('🧤',W/2,SAFE.y+220);
-    ctx.font='900 48px Arial';
-    const wm=ctx.createLinearGradient(0,SAFE.y+260,0,SAFE.y+320);
-    wm.addColorStop(0,'#22c55e');wm.addColorStop(1,'#0a3d20');
-    ctx.fillStyle=wm;
-    ctx.fillText('GOALKEEPER',W/2,SAFE.y+290);
-    ctx.font='14px Arial';ctx.fillStyle='rgba(255,255,255,.7)';
-    ctx.fillText('Block every shot with your hands',W/2,SAFE.y+330);
-    if(hiScore>0){ctx.font='bold 16px Arial';ctx.fillStyle='#fbbf24';ctx.fillText(`🏆 Best: ${hiScore}`,W/2,SAFE.y+SAFE.h-100);}
-    ctx.font='12px Arial';ctx.fillStyle='rgba(255,255,255,.5)';
-    ctx.fillText('▶ Press Start',W/2,SAFE.y+SAFE.h-50);
-    ctx.restore();
+    drawCamera();drawStadium();
+    if(window.drawGameOSReady) window.drawGameOSReady(ctx,{W,H,SAFE,emoji:'🥅',name:'Goalkeeper',tagline:'Block every shot with your hands',hiScore,hue:120,accentA:'#22c55e',accentB:'#0ea5e9',tip:'✋ Spread both hands to cover the goal'});
     drawHands();
   }
   else if(gameState==='countdown'){
@@ -808,5 +794,6 @@ document.querySelectorAll('.t-btn').forEach(el=>el.addEventListener('click',()=>
 [1500,3500,7000].forEach(ms=>setTimeout(listCameras,ms));
 requestAnimationFrame(t=>{lastTime=t;loop(t);});
 </script>
+<script src="gameos-nav.js"></script>
 </body>
 </html>

@@ -147,11 +147,10 @@
 </div>
 
 <div id="panel">
-  <div class="badge"><div class="nm">GAMEOS</div><div class="tg">ONE GAME A DAY</div></div>
+  <div class="badge"><div class="nm">🎮 GAMEOS</div><div class="tg">17 GAMES · HANDS FREE</div></div>
 
-  <button class="btn" id="homeBtn">🏠 Home</button>
   <button class="btn" id="startBtn">▶ Start</button>
-  <button class="btn" id="stopBtn">⏹ Stop</button>
+  <button class="btn" id="homeBtn">🏠 Hub</button>
 
   <div class="sec">Mode</div>
   <div class="row3">
@@ -165,21 +164,20 @@
     <button class="btn" id="dlBtn">⬇ Download</button>
     <div class="dl-meta" id="dlMeta">—</div>
   </div>
-
-  <button class="btn" id="shareBtn">🔗 Share game</button>
-  <button class="btn" id="phoneBtn">📱 Open on Phone</button>
+  <button class="btn" id="shareBtn">🔗 Share</button>
 
   <div class="divider"></div>
   <div class="sec">Camera</div>
   <select id="camSelect"><option>Loading…</option></select>
-  <button class="btn toggle-btn" id="refreshCamBtn" style="font-size:11px">🔄 Refresh list</button>
-
-  <button class="btn toggle-btn" id="flipBtn">🔄 Flip Camera</button>
-
   <div class="divider"></div>
-  <button class="btn toggle-btn" id="safeBtn">📐 Safe Zone</button>
   <button class="btn toggle-btn on" id="muteBtn">🔊 Sound</button>
   <div id="status">Loading…</div>
+  <!-- hidden but needed for JS refs -->
+  <button id="stopBtn" style="display:none"></button>
+  <button id="safeBtn" style="display:none"></button>
+  <button id="phoneBtn" style="display:none"></button>
+  <button id="flipBtn" style="display:none"></button>
+  <button id="refreshCamBtn" style="display:none"></button>
 </div>
 
 <video id="vid" playsinline webkit-playsinline muted autoplay style="display:none"></video>
@@ -1097,109 +1095,213 @@ function getTier(){ let t=TIERS[0]; for(const tier of TIERS) if(currentGame.scor
 /* ────────────────────────────────────────────────
    UI — HOME
    ──────────────────────────────────────────────── */
-const homeCards = Object.values(GAMES);
-let homeHover = -1;
-function drawHome() {
-  /* gradient backdrop */
-  const g = ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#1a0533'); g.addColorStop(.5,'#0e0a1f'); g.addColorStop(1,'#06060c');
-  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+/* ────────────────────────────────────────────────
+   ALL GAMES REGISTRY — the complete GameOS lineup
+   4 embedded  +  9 external (link out)
+   ──────────────────────────────────────────────── */
+const ALL_GAMES = [
+  /* ── EMBEDDED in this hub ── */
+  {id:'balloon',  name:'Balloon Pop',  emoji:'🎈', hue:280, tag:'Pop with your hands',   href:null},
+  {id:'catch',    name:'Catch It',     emoji:'🫗', hue:200, tag:'Never drop a drop',     href:null},
+  {id:'slice',    name:'Fruit Slice',  emoji:'🍉', hue:130, tag:'Swipe to slice',         href:null},
+  {id:'whack',    name:'Whack-a-Hand', emoji:'👊', hue:30,  tag:'Slam the targets',       href:null},
+  /* ── EXTERNAL standalone games ── */
+  {id:'goalkeeper',name:'Goalkeeper',  emoji:'🥅', hue:50,  tag:'Block every shot',      href:'goalkeeper.html'},
+  {id:'striker',  name:'Striker',      emoji:'⚽', hue:90,  tag:'Kick with your body',   href:'striker.html'},
+  {id:'stealth',  name:'Stealth',      emoji:'🗡️', hue:270, tag:'Throw daggers',          href:'stealth.html'},
+  {id:'hole',     name:'Hole.io',      emoji:'🕳️', hue:240, tag:'Eat the city',           href:'hole.html'},
+  {id:'smash',    name:'Space Smash',  emoji:'🚀', hue:210, tag:'Blast the planets',     href:'smash.html'},
+  {id:'minimart', name:'Mini Mart',    emoji:'🛒', hue:160, tag:'Stock the shelves',     href:'minimart.html'},
+  {id:'phonecase',name:'Phone Case',   emoji:'📱', hue:320, tag:'Gem designer',           href:'phonecase.html'},
+  {id:'hoops',    name:'Hoops',        emoji:'🏀', hue:25,  tag:'Flick it in',            href:'hoops.html'},
+  {id:'stack',    name:'Stack',        emoji:'🟦', hue:200, tag:'Jab to stack',           href:'stack.html'},
+  {id:'bubble',   name:'Bubble Pop',   emoji:'🫧', hue:185, tag:'Match 3 bubbles',        href:'bubble.html'},
+  {id:'piano',    name:'Piano Tiles',  emoji:'🎹', hue:0,   tag:'Hit the notes',          href:'piano.html'},
+  {id:'flappy',   name:'Flappy Arms',  emoji:'🐦', hue:180, tag:'Flap to fly',            href:'flappy.html'},
+  {id:'pickle',   name:'Pickleball',   emoji:'🏓', hue:160, tag:'Volley the AI',          href:'pickleball.html'},
+];
+const homeCards = Object.values(GAMES); /* for backward-compat with loadGame */
+let homeHover=-1, homeHoverIdx=-1, homeHoverT=0;
+let homeScrollY=0, homeScrollTarget=0; /* virtual scroll in canvas coords */
 
-  /* ambient particles */
-  for (const p of homeAmbient) {
-    p.x += p.vx; p.y += p.vy;
-    if (p.y < -10) { p.y = H+10; p.x = Math.random()*W; }
-    ctx.save(); ctx.globalAlpha = p.a;
-    ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+const homeAmbient = Array.from({length:40},()=>({
+  x:Math.random()*W, y:Math.random()*H,
+  vx:(Math.random()-.5)*.25, vy:-(.15+Math.random()*.35),
+  r:1+Math.random()*2.5, a:.1+Math.random()*.4,
+  col: ['#a855f7','#ec4899','#f97316','#14b8a6','#fbbf24','#3b82f6'][0|Math.random()*6],
+}));
+
+function drawHome(){
+  /* ── deep bg ── */
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#080012'); bg.addColorStop(.5,'#0b0820'); bg.addColorStop(1,'#04060e');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  /* ambient stars */
+  for(const p of homeAmbient){
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.y<-6){p.y=H+6;p.x=Math.random()*W;}
+    ctx.save();ctx.globalAlpha=p.a*(0.7+0.3*Math.sin(Date.now()/900+p.x));
+    ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
     ctx.restore();
   }
 
-  /* title */
+  /* ── LOGO ── */
+  const logoY = SAFE.y + 62;
   ctx.save();
-  ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.font='900 56px -apple-system,Arial';
-  const wm=ctx.createLinearGradient(W/2-100,0,W/2+100,0);
-  wm.addColorStop(0,'#a855f7'); wm.addColorStop(.5,'#ec4899'); wm.addColorStop(1,'#f97316');
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  /* glow ring behind logo */
+  const lg=ctx.createRadialGradient(W/2,logoY,0,W/2,logoY,90);
+  lg.addColorStop(0,'rgba(168,85,247,.18)'); lg.addColorStop(1,'rgba(168,85,247,0)');
+  ctx.fillStyle=lg; ctx.fillRect(W/2-90,logoY-50,180,100);
+  /* logo text */
+  ctx.font='900 58px -apple-system,Arial';
+  const wm=ctx.createLinearGradient(W/2-110,0,W/2+110,0);
+  wm.addColorStop(0,'#a855f7'); wm.addColorStop(.45,'#ec4899'); wm.addColorStop(1,'#f97316');
   ctx.fillStyle=wm;
-  ctx.shadowColor='rgba(168,85,247,.6)'; ctx.shadowBlur=20;
-  ctx.fillText('GameOS', W/2, SAFE.y+90);
+  ctx.shadowColor='rgba(168,85,247,.7)'; ctx.shadowBlur=28;
+  ctx.fillText('GameOS', W/2, logoY);
   ctx.shadowBlur=0;
-  ctx.font='bold 13px Arial'; ctx.fillStyle='rgba(255,255,255,.55)';
-  ctx.fillText('ONE GAME A DAY · 60 SECONDS', W/2, SAFE.y+135);
+  /* tagline */
+  ctx.font='700 12px -apple-system,Arial';
+  ctx.fillStyle='rgba(255,255,255,.45)';
+  ctx.letterSpacing='2px';
+  ctx.fillText('17 HAND-TRACKING GAMES  ·  60 SECONDS', W/2, logoY+38);
   ctx.restore();
 
-  /* game cards in 2x2 grid */
-  const gw = SAFE.w-30, gh = 200;
-  const cardW = (gw-20)/2, cardH = 175;
-  const startX = SAFE.x+15, startY = SAFE.y+180;
-  homeCards.forEach((g,i)=>{
-    const r=Math.floor(i/2), c=i%2;
-    const cx = startX + c*(cardW+20);
-    const cy = startY + r*(cardH+18);
-    drawCard(cx,cy,cardW,cardH, g, i);
+  /* ── smooth scroll ── */
+  homeScrollY += (homeScrollTarget - homeScrollY) * 0.12;
+
+  /* ── GAME GRID ── */
+  const COLS=3, GAP=10, PAD=14;
+  const gridW = SAFE.w - PAD*2;
+  const cw = (gridW - GAP*(COLS-1)) / COLS;
+  const ch = cw * 1.18;
+  const startX = SAFE.x + PAD;
+  const startY = SAFE.y + 115 - homeScrollY;
+  const rows = Math.ceil(ALL_GAMES.length / COLS);
+  const totalH = rows * (ch + GAP);
+
+  /* update max scroll */
+  const maxScroll = Math.max(0, totalH - (SAFE.h - 120));
+
+  ctx.save();
+  /* clip to safe zone so cards don't bleed outside */
+  ctx.beginPath();ctx.rect(0, SAFE.y+110, W, SAFE.h-110);ctx.clip();
+
+  ALL_GAMES.forEach((g,i)=>{
+    const row=Math.floor(i/COLS), col=i%COLS;
+    const cx=startX+col*(cw+GAP);
+    const cy=startY+row*(ch+GAP);
+    /* skip if off-screen */
+    if(cy+ch < SAFE.y-20 || cy > SAFE.y+SAFE.h+20) return;
+    drawGameTile(cx,cy,cw,ch,g,i);
   });
-
-  /* footer */
-  ctx.save();
-  ctx.font='bold 11px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillStyle='rgba(255,255,255,.4)';
-  ctx.fillText('Tap a game · Hit ▶ Start', W/2, SAFE.y+SAFE.h-40);
-  ctx.fillStyle='rgba(255,255,255,.25)'; ctx.font='9px Arial';
-  ctx.fillText('Pick a face emoji in the panel for face swap', W/2, SAFE.y+SAFE.h-22);
   ctx.restore();
+
+  /* scroll fade at bottom */
+  if(homeScrollTarget < maxScroll - 5){
+    const fadeG=ctx.createLinearGradient(0,SAFE.y+SAFE.h-50,0,SAFE.y+SAFE.h);
+    fadeG.addColorStop(0,'rgba(8,0,18,0)'); fadeG.addColorStop(1,'rgba(8,0,18,.95)');
+    ctx.fillStyle=fadeG; ctx.fillRect(0,SAFE.y+SAFE.h-50,W,50);
+    /* scroll hint */
+    ctx.save();ctx.textAlign='center';ctx.globalAlpha=0.5+0.3*Math.sin(Date.now()/600);
+    ctx.font='18px Arial';ctx.fillStyle='#fff';
+    ctx.fillText('▾ scroll', W/2, SAFE.y+SAFE.h-10);
+    ctx.restore();
+  }
+
+  /* ── HAND CURSOR ── */
+  const pts=allHandPts();
+  for(const pt of pts){
+    ctx.save();
+    ctx.beginPath();ctx.arc(pt.x,pt.y,18,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,.12)';ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=2;ctx.stroke();
+    ctx.restore();
+  }
 }
-const homeAmbient = Array.from({length:30},()=>({
-  x:Math.random()*W, y:Math.random()*H,
-  vx:(Math.random()-.5)*.3, vy:-(.2+Math.random()*.4),
-  r:1+Math.random()*2, a:.2+Math.random()*.5,
-  col: PALETTE[0|Math.random()*PALETTE.length],
-}));
 
-function drawCard(x,y,w,h,g,idx){
-  const hovered = homeHover === idx;
+function drawGameTile(x,y,w,h,g,idx){
+  const hovered = homeHover===idx;
+  const pulse = hovered ? 1+0.04*Math.sin(Date.now()/120) : 1;
   ctx.save();
-  /* card bg */
-  ctx.beginPath();
-  if(ctx.roundRect) ctx.roundRect(x,y,w,h,18); else ctx.rect(x,y,w,h);
-  const grad = ctx.createLinearGradient(x,y,x,y+h);
-  grad.addColorStop(0, `hsl(${g.hue}, 70%, 18%)`);
-  grad.addColorStop(1, `hsl(${g.hue}, 60%, 8%)`);
-  ctx.fillStyle = grad;
-  if (hovered) { ctx.shadowColor=`hsl(${g.hue}, 80%, 60%)`; ctx.shadowBlur=20; }
-  ctx.fill();
-  ctx.shadowBlur=0;
-  ctx.strokeStyle = hovered?`hsl(${g.hue}, 80%, 60%)`:'rgba(255,255,255,.1)';
-  ctx.lineWidth = hovered?2.5:1.5;
-  ctx.stroke();
+  ctx.translate(x+w/2, y+h/2);
+  ctx.scale(pulse, pulse);
+  const hx=-w/2, hy=-h/2;
 
-  /* big emoji */
-  ctx.font='62px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(g.emoji, x+w/2, y+h/2-15);
+  /* card gradient bg */
+  ctx.beginPath();
+  if(ctx.roundRect) ctx.roundRect(hx,hy,w,h,14); else ctx.rect(hx,hy,w,h);
+  const cg=ctx.createLinearGradient(0,hy,0,hy+h);
+  cg.addColorStop(0,`hsl(${g.hue},65%,16%)`);
+  cg.addColorStop(1,`hsl(${g.hue},55%,7%)`);
+  ctx.fillStyle=cg;
+  if(hovered){ctx.shadowColor=`hsl(${g.hue},85%,58%)`;ctx.shadowBlur=22;}
+  ctx.fill();ctx.shadowBlur=0;
+
+  /* border */
+  ctx.strokeStyle=hovered?`hsl(${g.hue},85%,62%)`:'rgba(255,255,255,.09)';
+  ctx.lineWidth=hovered?2:1;ctx.stroke();
+
+  /* external badge */
+  if(g.href){
+    ctx.save();
+    ctx.fillStyle=`hsl(${g.hue},80%,55%)`;
+    ctx.font='bold 7px Arial';ctx.textAlign='right';ctx.textBaseline='top';
+    ctx.globalAlpha=0.8;
+    ctx.fillText('↗',w/2-5,hy+5);
+    ctx.restore();
+  }
+
+  /* emoji */
+  ctx.font=`${w*0.42}px Arial`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(g.emoji, 0, hy+h*0.38);
 
   /* name */
-  ctx.font='900 18px -apple-system,Arial'; ctx.fillStyle='#fff';
-  ctx.fillText(g.name, x+w/2, y+h-46);
-  /* tag */
-  ctx.font='10px Arial'; ctx.fillStyle='rgba(255,255,255,.55)';
-  ctx.fillText(g.tag, x+w/2, y+h-26);
+  ctx.font=`900 ${Math.min(13,w*0.13)}px -apple-system,Arial`;
+  ctx.fillStyle='#fff';ctx.textBaseline='middle';
+  ctx.fillText(g.name, 0, hy+h*0.72);
 
-  /* play hint */
-  ctx.font='bold 9px Arial'; ctx.fillStyle=`hsl(${g.hue}, 80%, 70%)`;
-  ctx.fillText('▶ TAP', x+w-22, y+15);
+  /* tag */
+  ctx.font=`${Math.min(9,w*0.095)}px Arial`;
+  ctx.fillStyle=`hsla(${g.hue},70%,75%,.7)`;
+  ctx.fillText(g.tag, 0, hy+h*0.88);
+
+  /* hover progress arc */
+  if(hovered && homeHoverT>0){
+    const prog = Math.min(1, homeHoverT/0.8);
+    ctx.beginPath();
+    ctx.arc(0, hy+h*0.38, w*0.26, -Math.PI/2, -Math.PI/2+prog*Math.PI*2);
+    ctx.strokeStyle=`hsl(${g.hue},90%,65%)`;ctx.lineWidth=3;ctx.stroke();
+  }
+
   ctx.restore();
 }
 
-/* hit-test home cards using tap or hand point */
 function homeCardAt(px,py){
-  const cardW = (SAFE.w-30-20)/2, cardH = 175;
-  const startX = SAFE.x+15, startY = SAFE.y+180;
-  for (let i=0;i<homeCards.length;i++) {
-    const r=Math.floor(i/2), c=i%2;
-    const cx = startX + c*(cardW+20);
-    const cy = startY + r*(cardH+18);
-    if (px>=cx && px<=cx+cardW && py>=cy && py<=cy+cardH) return i;
+  const COLS=3, GAP=10, PAD=14;
+  const gridW=SAFE.w-PAD*2;
+  const cw=(gridW-GAP*(COLS-1))/COLS;
+  const ch=cw*1.18;
+  const startX=SAFE.x+PAD;
+  const startY=SAFE.y+115-homeScrollY;
+  for(let i=0;i<ALL_GAMES.length;i++){
+    const row=Math.floor(i/COLS),col=i%COLS;
+    const cx=startX+col*(cw+GAP), cy=startY+row*(ch+GAP);
+    if(px>=cx&&px<=cx+cw&&py>=cy&&py<=cy+ch) return i;
   }
   return -1;
+}
+
+/* scroll the home grid */
+function homeScroll(delta){
+  const COLS=3,GAP=10,PAD=14,gridW=SAFE.w-PAD*2;
+  const cw=(gridW-GAP*(COLS-1))/COLS, ch=cw*1.18;
+  const rows=Math.ceil(ALL_GAMES.length/COLS);
+  const totalH=rows*(ch+GAP);
+  const maxScroll=Math.max(0,totalH-(SAFE.h-120));
+  homeScrollTarget=Math.max(0,Math.min(maxScroll,homeScrollTarget+delta));
 }
 
 /* ────────────────────────────────────────────────
@@ -1432,25 +1534,22 @@ function loop(ts){
   }
 
   if (gameState==='home') {
-    drawBg(null);
     drawHome();
-    /* allow hand to "tap" cards by hovering */
+    /* hand hover-to-select */
     const pts = allHandPts();
-    if (pts.length) {
+    if(pts.length){
       const idx = homeCardAt(pts[0].x, pts[0].y);
       homeHover = idx;
-      /* hover-to-select: 0.8s hover triggers */
-      if (idx>=0) {
-        if (homeHover === homeHoverIdx) homeHoverT += dt; else { homeHoverT = 0; homeHoverIdx = idx; }
-        if (homeHoverT > 0.8) {
-          const g = homeCards[idx];
-          loadGame(g.id);
-          startGame();
-          homeHoverT = 0;
+      if(idx>=0){
+        if(homeHoverIdx===idx) homeHoverT+=dt; else{homeHoverT=0;homeHoverIdx=idx;}
+        if(homeHoverT>0.8){
+          launchGame(idx);
+          homeHoverT=0;
         }
-      } else { homeHoverT = 0; }
-    }
-    drawHands();
+      } else {homeHoverT=0;}
+      /* hand scroll: bottom quarter of safe zone scrolls down */
+      if(pts[0].y > SAFE.y+SAFE.h*0.75) homeScroll(3);
+    } else { homeHover=-1; }
   }
   else if (gameState==='countdown') {
     drawBg(currentGame);
@@ -1499,11 +1598,24 @@ function loop(ts){
 
   requestAnimationFrame(loop);
 }
-let homeHoverIdx=-1, homeHoverT=0;
 
 /* ────────────────────────────────────────────────
    GAME CONTROL
    ──────────────────────────────────────────────── */
+function launchGame(idx){
+  const g = ALL_GAMES[idx];
+  if(!g) return;
+  getAC();
+  ping('open_'+g.id);
+  if(g.href){
+    /* external game — navigate */
+    window.location.href = g.href;
+  } else {
+    /* embedded game */
+    loadGame(g.id);
+    startGame();
+  }
+}
 function loadGame(id){
   if (!GAMES[id]) return;
   currentGame = GAMES[id];
@@ -1713,16 +1825,28 @@ $('flipBtn').addEventListener('click', async ()=>{
 
 /* canvas tap on home (mobile) → start that game */
 canvas.addEventListener('click', e=>{
-  if (gameState!=='home') return;
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX-rect.left) / rect.width * W;
-  const y = (e.clientY-rect.top) / rect.height * H;
-  const idx = homeCardAt(x,y);
-  if (idx>=0) {
-    loadGame(homeCards[idx].id);
-    startGame();
-  }
+  getAC();
+  if(gameState!=='home') return;
+  const rect=canvas.getBoundingClientRect();
+  const x=(e.clientX-rect.left)/rect.width*W;
+  const y=(e.clientY-rect.top)/rect.height*H;
+  const idx=homeCardAt(x,y);
+  if(idx>=0) launchGame(idx);
 });
+/* touch scroll on canvas */
+let touchStartY=0;
+canvas.addEventListener('touchstart',e=>{touchStartY=e.touches[0].clientY;},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(gameState!=='home')return;
+  const dy=touchStartY-e.touches[0].clientY;
+  touchStartY=e.touches[0].clientY;
+  homeScroll(dy*(H/canvas.getBoundingClientRect().height));
+},{passive:true});
+/* mouse wheel scroll on canvas */
+canvas.addEventListener('wheel',e=>{
+  if(gameState!=='home')return;
+  homeScroll(e.deltaY*(H/canvas.getBoundingClientRect().height)*0.5);
+},{passive:true});
 
 /* ────────────────────────────────────────────────
    INIT

@@ -742,21 +742,8 @@ function loop(ts){
   if(shakeFrames>0){const a=shakeAmp*(shakeFrames/22);ctx.translate((Math.random()-.5)*a,(Math.random()-.5)*a);shakeFrames--;}
 
   if(gameState==='ready'){
-    drawCamera();ctx.fillStyle='rgba(0,0,10,.55)';ctx.fillRect(0,0,W,H);drawStadium();
-    ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.font='80px Arial';ctx.fillText('🦵',W/2,SAFE.y+220);
-    ctx.font='900 48px Arial';
-    const wm=ctx.createLinearGradient(0,SAFE.y+260,0,SAFE.y+320);
-    wm.addColorStop(0,'#fbbf24');wm.addColorStop(1,'#92400e');ctx.fillStyle=wm;
-    ctx.fillText('STRIKER',W/2,SAFE.y+290);
-    ctx.font='14px Arial';ctx.fillStyle='rgba(255,255,255,.7)';
-    ctx.fillText('Kick the ball into the goal',W/2,SAFE.y+330);
-    ctx.font='12px Arial';ctx.fillStyle='rgba(255,255,255,.45)';
-    ctx.fillText('Stand 2m from camera · full body visible',W/2,SAFE.y+360);
-    if(hiScore>0){ctx.font='bold 16px Arial';ctx.fillStyle='#fbbf24';ctx.fillText(`🏆 Best: ${hiScore} goals`,W/2,SAFE.y+SAFE.h-100);}
-    ctx.font='12px Arial';ctx.fillStyle='rgba(255,255,255,.5)';
-    ctx.fillText('▶ Press Start',W/2,SAFE.y+SAFE.h-50);
-    ctx.restore();
+    drawCamera();drawStadium();
+    if(window.drawGameOSReady)window.drawGameOSReady(ctx,{W,H,SAFE,emoji:'⚽',name:'Striker',tagline:'Kick the ball into the goal!',hiScore,hue:50,accentA:'#fbbf24',accentB:'#f97316',tip:'🦵 Stand 2m back · full body visible'});
     drawPlayerSkeleton();
   }
   else if(gameState==='countdown'){
@@ -797,5 +784,6 @@ document.querySelectorAll('.t-btn').forEach(el=>el.addEventListener('click',()=>
 [1500,3500,7000].forEach(ms=>setTimeout(listCameras,ms));
 requestAnimationFrame(t=>{lastTime=t;loop(t);});
 </script>
+<script src="gameos-nav.js"></script>
 </body>
 </html>
