@@ -172,13 +172,12 @@ function resetBall(){
   rallyCount=0;
 }
 function serveFromAI(){
-  /* AI serves toward player side — high arc that clears the net */
   ball.x = FAR_BASELINE_X(0.3+Math.random()*0.4);
   ball.y = FAR_BASELINE+20;
-  ball.height = 120;     /* start high */
-  ball.vh = 9;           /* strong lift so it stays above net */
+  ball.height = 200;
+  ball.vh = 14;
   ball.vx = (W/2 - ball.x)*0.005 + (Math.random()-.5)*0.5;
-  ball.vy = 4;
+  ball.vy = 3.5;
   ball.alive = true;
   ball.side='player';
   lastHitter='ai';
@@ -232,7 +231,7 @@ function update(d){
   } else {
     aiTargetX = W/2 + Math.sin(Date.now()/500)*40;
   }
-  aiX += (aiTargetX-aiX) * 0.07;
+  aiX += (aiTargetX-aiX) * 0.15;
 
   /* serve loop */
   if(!ball.alive){
@@ -265,7 +264,7 @@ function update(d){
   }
   /* NET collision — true crossing detection */
   const crossed = (prevY - NET_Y) * (ball.y - NET_Y) <= 0 && prevY !== ball.y;
-  if(crossed && ball.height < 50){
+  if(crossed && ball.height < 30){
     sfx.lose();
     floatT(ball.x, ball.y-30, '🪤 NET','#ef4444',true);
     burstP(ball.x, ball.y, '#ef4444', 12);
@@ -291,12 +290,12 @@ function update(d){
   /* AI hit logic — when ball approaches AI side near baseline */
   if(ball.side==='far' && ball.y < FAR_BASELINE+50){
     /* AI hits if close to ai x */
-    if(Math.abs(ball.x - aiX) < 60){
+    if(Math.abs(ball.x - aiX) < 100){
       /* AI returns — strong arc that clears the net */
       ball.vy = 4 + Math.random()*1;
       ball.vx = (Math.random()-.5)*2 + (W/2-ball.x)*0.003;
-      ball.vh = 9 + Math.random()*2;
-      ball.height = Math.max(ball.height, 100);
+      ball.vh = 12 + Math.random()*2;
+      ball.height = Math.max(ball.height, 150);
       ball.side = 'player';
       lastHitter='ai'; lastHitTime=performance.now();
       rallyCount++;
@@ -329,8 +328,8 @@ function update(d){
         const power = 4 + Math.min(6, sv.speed*0.3);
         ball.vy = -power;
         ball.vx = sv.x*0.4 + (aiX - ball.x)*0.008;
-        ball.vh = 10 + Math.min(6, sv.speed*0.4);
-        ball.height = Math.max(ball.height, 110);
+        ball.vh = 13 + Math.min(6, sv.speed*0.4);
+        ball.height = Math.max(ball.height, 150);
         ball.side='far';
         lastHitter='player';lastHitTime=performance.now();
         rallyCount++;
@@ -350,6 +349,7 @@ function update(d){
   prevPaddles=prevPaddles.slice(0,3);
 }
 function playerMissed(){
+  ballTrail=[];
   ball.alive=false; misses++;
   floatT(W/2, H/2, '❌ MISS','#ef4444',true);
   floatT(W/2, H/2+50, `Rally: ${rallyCount}`, 'rgba(255,255,255,.7)');
@@ -357,6 +357,7 @@ function playerMissed(){
   serveTimer=1.8;
 }
 function aiMissed(){
+  ballTrail=[];
   ball.alive=false; wins++;
   const bonus = 5 + rallyCount;
   score += bonus;
@@ -367,91 +368,217 @@ function aiMissed(){
   serveTimer=1.6;
 }
 
-/* ===== COURT ===== */
+/* ===== 3D COURT ===== */
+const VP = {x: W/2, y: SAFE.y - 60}; /* vanishing point */
+/* project a court point from [0..1] width and [0..1] depth to canvas */
+function courtPt(wx, depth){
+  const nearL=SAFE.x-20, nearR=SAFE.x+SAFE.w+20;
+  const farL=W/2-55, farR=W/2+55;
+  const y = FAR_BASELINE + (NEAR_BASELINE-FAR_BASELINE)*depth;
+  const x = (farL+(nearL-farL)*depth) + (farR-farL+(nearR-nearL-(farR-farL))*depth)*wx;
+  return {x, y};
+}
+
+/* ball trail for motion blur */
+let ballTrail=[];
+
 function drawCourt(){
-  /* dim camera */
-  ctx.fillStyle='rgba(8,30,20,.6)';ctx.fillRect(0,0,W,H);
-  /* sky behind court (top fade) */
-  const sky=ctx.createLinearGradient(0,0,0,SAFE.y+60);
-  sky.addColorStop(0,'rgba(20,50,80,.7)');
-  sky.addColorStop(1,'rgba(20,50,80,0)');
-  ctx.fillStyle=sky;ctx.fillRect(0,0,W,SAFE.y+60);
-  /* crowd silhouette */
-  for(let i=0;i<40;i++){const x=i*(W/40);ctx.fillStyle=`rgba(20,15,25,.7)`;ctx.beginPath();ctx.arc(x,SAFE.y+30+(i%3)*3,2.5,0,Math.PI*2);ctx.fill();}
-  /* COURT — trapezoid perspective (far narrow, near wide) */
-  const farL = W*.3, farR = W*.7;
-  const nearL = W*.05, nearR = W*.95;
-  /* base court */
+  /* === BACKGROUND / ARENA === */
+  /* dark overlay on camera */
+  ctx.fillStyle='rgba(4,10,20,.72)';ctx.fillRect(0,0,W,H);
+
+  /* deep arena sky gradient */
+  const sky=ctx.createLinearGradient(0,0,0,FAR_BASELINE);
+  sky.addColorStop(0,'rgba(5,10,35,1)');
+  sky.addColorStop(.6,'rgba(10,20,55,.9)');
+  sky.addColorStop(1,'rgba(10,30,60,0)');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,FAR_BASELINE+20);
+
+  /* stadium rim lights — top arc glow */
+  for(let i=0;i<6;i++){
+    const lx=SAFE.x + (SAFE.w/(5))*i;
+    const g=ctx.createRadialGradient(lx,SAFE.y+15,0,lx,SAFE.y+15,60);
+    g.addColorStop(0,'rgba(20,184,166,.35)');
+    g.addColorStop(1,'rgba(20,184,166,0)');
+    ctx.fillStyle=g;ctx.fillRect(lx-60,SAFE.y-10,120,80);
+  }
+
+  /* == CROWD STANDS == */
+  /* upper tier */
   ctx.save();
+  const standGrad=ctx.createLinearGradient(0,SAFE.y-50,0,FAR_BASELINE);
+  standGrad.addColorStop(0,'rgba(15,20,40,.95)');
+  standGrad.addColorStop(1,'rgba(20,30,60,.6)');
+  ctx.fillStyle=standGrad;
+  ctx.fillRect(0,SAFE.y-50,W,FAR_BASELINE-SAFE.y+50);
+  /* crowd heads — randomised colours */
+  const crowdRng=new Array(80).fill(0).map((_,i)=>({x:i*(W/79.5),row:i%4,c:['#ef4444','#3b82f6','#f59e0b','#fff','#a78bfa','#22c55e'][i%6]}));
+  for(const {x,row,c} of crowdRng){
+    const cy=SAFE.y-12+row*8+(x%3)*2;
+    ctx.fillStyle=c;
+    ctx.beginPath();ctx.arc(x,cy,3.5,0,Math.PI*2);ctx.fill();
+    /* body */
+    ctx.fillStyle='rgba(0,0,0,.4)';
+    ctx.fillRect(x-3,cy+3,6,5);
+  }
+  /* crowd glow bar */
+  const cgb=ctx.createLinearGradient(0,FAR_BASELINE-30,0,FAR_BASELINE);
+  cgb.addColorStop(0,'rgba(20,184,166,.18)');
+  cgb.addColorStop(1,'rgba(20,184,166,0)');
+  ctx.fillStyle=cgb;ctx.fillRect(0,FAR_BASELINE-30,W,30);
+  ctx.restore();
+
+  /* == COURT SURFACE == */
+  ctx.save();
+  const farL_=W/2-55, farR_=W/2+55;
+  const nearL_=SAFE.x-20, nearR_=SAFE.x+SAFE.w+20;
+  /* base colour */
   const courtGrad=ctx.createLinearGradient(0,FAR_BASELINE,0,NEAR_BASELINE);
-  courtGrad.addColorStop(0,'#1e3a8a');courtGrad.addColorStop(.5,'#0f4f7a');courtGrad.addColorStop(1,'#0c3247');
+  courtGrad.addColorStop(0,'#0c2a5a');
+  courtGrad.addColorStop(.4,'#0f3d7a');
+  courtGrad.addColorStop(.8,'#0a2f5c');
+  courtGrad.addColorStop(1,'#07203e');
   ctx.fillStyle=courtGrad;
   ctx.beginPath();
-  ctx.moveTo(farL, FAR_BASELINE);
-  ctx.lineTo(farR, FAR_BASELINE);
-  ctx.lineTo(nearR, NEAR_BASELINE);
-  ctx.lineTo(nearL, NEAR_BASELINE);
-  ctx.closePath();
-  ctx.fill();
-  /* court lines */
-  ctx.strokeStyle='#fff';ctx.lineWidth=3;
-  ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=4;
-  /* baselines + sidelines */
-  ctx.stroke();
-  /* center service line */
-  ctx.beginPath();ctx.moveTo((farL+farR)/2, FAR_BASELINE);ctx.lineTo((nearL+nearR)/2, NEAR_BASELINE);ctx.stroke();
-  /* kitchen line (non-volley zone) on player side */
-  const kitchen_far_y = NET_Y + 80;
-  const tF = (kitchen_far_y-FAR_BASELINE)/(NEAR_BASELINE-FAR_BASELINE);
-  const klx = farL + (nearL-farL)*tF;
-  const krx = farR + (nearR-farR)*tF;
-  ctx.beginPath();ctx.moveTo(klx, kitchen_far_y);ctx.lineTo(krx, kitchen_far_y);ctx.stroke();
-  /* kitchen line on AI side */
-  const kitchen_near_y = NET_Y - 80;
-  const tN = (kitchen_near_y-FAR_BASELINE)/(NEAR_BASELINE-FAR_BASELINE);
-  const klx2 = farL + (nearL-farL)*tN;
-  const krx2 = farR + (nearR-farR)*tN;
-  ctx.beginPath();ctx.moveTo(klx2, kitchen_near_y);ctx.lineTo(krx2, kitchen_near_y);ctx.stroke();
-  /* kitchen tint */
-  ctx.fillStyle='rgba(20,184,166,.12)';
-  ctx.beginPath();
-  ctx.moveTo(klx2, kitchen_near_y);ctx.lineTo(krx2, kitchen_near_y);
-  ctx.lineTo(krx, kitchen_far_y);ctx.lineTo(klx, kitchen_far_y);
+  ctx.moveTo(farL_, FAR_BASELINE);ctx.lineTo(farR_, FAR_BASELINE);
+  ctx.lineTo(nearR_, NEAR_BASELINE);ctx.lineTo(nearL_, NEAR_BASELINE);
   ctx.closePath();ctx.fill();
+
+  /* perspective grid lines */
+  ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;
+  for(let d=0;d<=1;d+=0.1){
+    const l=courtPt(0,d),r=courtPt(1,d);
+    ctx.beginPath();ctx.moveTo(l.x,l.y);ctx.lineTo(r.x,r.y);ctx.stroke();
+  }
+  for(let w=0;w<=1;w+=0.1){
+    const top=courtPt(w,0),bot=courtPt(w,1);
+    ctx.beginPath();ctx.moveTo(top.x,top.y);ctx.lineTo(bot.x,bot.y);ctx.stroke();
+  }
+
+  /* side glow — arena lights reflection on court */
+  const leftGlow=ctx.createLinearGradient(nearL_,0,nearL_+80,0);
+  leftGlow.addColorStop(0,'rgba(20,184,166,.12)');leftGlow.addColorStop(1,'rgba(20,184,166,0)');
+  ctx.fillStyle=leftGlow;
+  ctx.beginPath();
+  ctx.moveTo(farL_,FAR_BASELINE);ctx.lineTo(farL_+25,FAR_BASELINE);
+  ctx.lineTo(nearL_+80,NEAR_BASELINE);ctx.lineTo(nearL_,NEAR_BASELINE);
+  ctx.closePath();ctx.fill();
+  const rightGlow=ctx.createLinearGradient(nearR_,0,nearR_-80,0);
+  rightGlow.addColorStop(0,'rgba(20,184,166,.12)');rightGlow.addColorStop(1,'rgba(20,184,166,0)');
+  ctx.fillStyle=rightGlow;
+  ctx.beginPath();
+  ctx.moveTo(farR_,FAR_BASELINE);ctx.lineTo(farR_-25,FAR_BASELINE);
+  ctx.lineTo(nearR_-80,NEAR_BASELINE);ctx.lineTo(nearR_,NEAR_BASELINE);
+  ctx.closePath();ctx.fill();
+
+  /* court lines — bright white */
+  ctx.strokeStyle='rgba(255,255,255,.88)';ctx.lineWidth=3;ctx.shadowColor='rgba(200,230,255,.6)';ctx.shadowBlur=8;
+  /* far baseline */
+  ctx.beginPath();ctx.moveTo(farL_,FAR_BASELINE);ctx.lineTo(farR_,FAR_BASELINE);ctx.stroke();
+  /* near baseline */
+  ctx.beginPath();ctx.moveTo(nearL_,NEAR_BASELINE);ctx.lineTo(nearR_,NEAR_BASELINE);ctx.stroke();
+  /* sidelines */
+  ctx.beginPath();ctx.moveTo(farL_,FAR_BASELINE);ctx.lineTo(nearL_,NEAR_BASELINE);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(farR_,FAR_BASELINE);ctx.lineTo(nearR_,NEAR_BASELINE);ctx.stroke();
+  /* center line */
+  ctx.beginPath();ctx.moveTo((farL_+farR_)/2,FAR_BASELINE);ctx.lineTo((nearL_+nearR_)/2,NEAR_BASELINE);ctx.stroke();
+  ctx.shadowBlur=0;
+
+  /* kitchen zones */
+  const kfY=NET_Y+80, knY=NET_Y-80;
+  const kfT=(kfY-FAR_BASELINE)/(NEAR_BASELINE-FAR_BASELINE);
+  const knT=(knY-FAR_BASELINE)/(NEAR_BASELINE-FAR_BASELINE);
+  const kfL=courtPt(0,kfT),kfR=courtPt(1,kfT);
+  const knL=courtPt(0,knT),knR=courtPt(1,knT);
+  ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(kfL.x,kfL.y);ctx.lineTo(kfR.x,kfR.y);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(knL.x,knL.y);ctx.lineTo(knR.x,knR.y);ctx.stroke();
+  /* kitchen fill */
+  ctx.fillStyle='rgba(20,184,166,.09)';
+  ctx.beginPath();ctx.moveTo(knL.x,knL.y);ctx.lineTo(knR.x,knR.y);ctx.lineTo(kfR.x,kfR.y);ctx.lineTo(kfL.x,kfL.y);ctx.closePath();ctx.fill();
+
+  /* side scoreboards */
+  drawScoreboard(SAFE.x-2, FAR_BASELINE+30, true);
+  drawScoreboard(SAFE.x+SAFE.w-62, FAR_BASELINE+30, false);
+
   ctx.restore();
+
   /* NET */
   drawNet();
   /* AI player at top */
   drawAI();
 }
+
+function drawScoreboard(bx, by, isLeft){
+  const bw=60,bh=70;
+  ctx.save();
+  ctx.globalAlpha=0.75;
+  /* board bg */
+  ctx.fillStyle='#0f172a';
+  if(ctx.roundRect)ctx.roundRect(bx,by,bw,bh,8);else ctx.rect(bx,by,bw,bh);
+  ctx.fill();
+  ctx.strokeStyle='rgba(20,184,166,.5)';ctx.lineWidth=1.5;ctx.stroke();
+  /* LED glow */
+  ctx.fillStyle='rgba(20,184,166,.15)';
+  ctx.fillRect(bx+4,by+4,bw-8,bh-8);
+  /* text */
+  ctx.fillStyle='#14b8a6';ctx.font='bold 8px Arial';ctx.textAlign='center';
+  ctx.fillText(isLeft?'YOU':'AI',bx+bw/2,by+16);
+  ctx.fillStyle='#fff';ctx.font='900 22px Arial';
+  ctx.fillText(isLeft?wins:misses,bx+bw/2,by+40);
+  ctx.fillStyle='rgba(255,255,255,.4)';ctx.font='7px Arial';
+  ctx.fillText('POINTS',bx+bw/2,by+56);
+  ctx.restore();
+}
+
 function drawNet(){
-  /* net width: trapezoid at NET_Y */
   const tNet=(NET_Y-FAR_BASELINE)/(NEAR_BASELINE-FAR_BASELINE);
   const netL = W*.3 + (W*.05 - W*.3)*tNet;
   const netR = W*.7 + (W*.95 - W*.7)*tNet;
-  const netH = 50;
-  /* posts */
+  const netH = 52;
+
+  /* net shadow on court */
   ctx.save();
-  ctx.fillStyle='#374151';
-  ctx.fillRect(netL-6, NET_Y-netH, 6, netH);
-  ctx.fillRect(netR, NET_Y-netH, 6, netH);
-  ctx.restore();
+  const nSh=ctx.createLinearGradient(0,NET_Y-netH,0,NET_Y+6);
+  nSh.addColorStop(0,'rgba(0,0,0,0)');nSh.addColorStop(1,'rgba(0,0,0,.35)');
+  ctx.fillStyle=nSh;
+  ctx.beginPath();ctx.moveTo(netL-4,NET_Y-netH);ctx.lineTo(netR+4,NET_Y-netH);
+  ctx.lineTo(netR+10,NET_Y+6);ctx.lineTo(netL-10,NET_Y+6);ctx.closePath();ctx.fill();
+
+  /* posts — 3D pillars */
+  const postW=8;
+  [[netL-postW,netL],[netR,netR+postW]].forEach(([l,r])=>{
+    const pg=ctx.createLinearGradient(l,0,r,0);
+    pg.addColorStop(0,'#4b5563');pg.addColorStop(.5,'#9ca3af');pg.addColorStop(1,'#374151');
+    ctx.fillStyle=pg;ctx.fillRect(l,NET_Y-netH-4,postW,netH+4);
+    /* post cap */
+    ctx.fillStyle='#e5e7eb';ctx.fillRect(l-2,NET_Y-netH-6,postW+4,6);
+  });
+
   /* net mesh */
   ctx.save();
-  ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1;
-  /* mesh grid */
-  const cols=24;
+  const cols=28;
+  /* net background shadow */
+  ctx.fillStyle='rgba(0,0,0,.2)';
+  ctx.fillRect(netL,NET_Y-netH,netR-netL,netH);
+  /* vertical cords */
   for(let i=0;i<=cols;i++){
     const x=netL+(netR-netL)*(i/cols);
-    ctx.beginPath();ctx.moveTo(x, NET_Y-netH);ctx.lineTo(x, NET_Y);ctx.stroke();
+    const alpha=i===0||i===cols?.8:.3;
+    ctx.strokeStyle=`rgba(200,220,255,${alpha})`;ctx.lineWidth=i===0||i===cols?1.5:.7;
+    ctx.beginPath();ctx.moveTo(x,NET_Y-netH);ctx.lineTo(x,NET_Y);ctx.stroke();
   }
-  for(let j=0;j<=5;j++){
-    const y=NET_Y-netH+(netH)*(j/5);
+  /* horizontal cords */
+  for(let j=0;j<=7;j++){
+    const y=NET_Y-netH+(netH)*(j/7);
+    ctx.strokeStyle=j===0||j===7?'rgba(255,255,255,.9)':'rgba(200,220,255,.3)';
+    ctx.lineWidth=j===0||j===7?1.5:.7;
     ctx.beginPath();ctx.moveTo(netL,y);ctx.lineTo(netR,y);ctx.stroke();
   }
-  /* white tape on top */
-  ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.shadowColor='rgba(0,0,0,.4)';ctx.shadowBlur=6;
-  ctx.beginPath();ctx.moveTo(netL-6, NET_Y-netH);ctx.lineTo(netR+6, NET_Y-netH);ctx.stroke();
+  /* white tape top with glow */
+  ctx.strokeStyle='#fff';ctx.lineWidth=5;ctx.shadowColor='rgba(255,255,255,.9)';ctx.shadowBlur=10;
+  ctx.beginPath();ctx.moveTo(netL-postW,NET_Y-netH);ctx.lineTo(netR+postW,NET_Y-netH);ctx.stroke();
+  ctx.shadowBlur=0;
   ctx.restore();
 }
 function drawAI(){
@@ -486,38 +613,84 @@ function drawAI(){
   ctx.restore();
 }
 
+let ballRotAngle=0;
 function drawBall(){
-  /* shadow on ground (gets larger when ball is high) */
-  const sx=ball.x, sy=ball.y + ball.height*0.05;
-  const shadowR = 10 + ball.height*0.05;
-  ctx.save();
-  ctx.fillStyle=`rgba(0,0,0,${Math.max(.1,.5-ball.height*.003)})`;
-  ctx.beginPath();ctx.ellipse(sx, sy, shadowR, shadowR*0.35, 0,0,Math.PI*2);ctx.fill();
-  ctx.restore();
-  /* ball — apparent y is ball.y - height (visual lift) */
-  const bx=ball.x, by=ball.y - ball.height;
-  /* size scales with depth (ball.y) */
+  if(!ball.alive)return;
   const depth = (ball.y-FAR_BASELINE)/(NEAR_BASELINE-FAR_BASELINE);
-  const r = 8 + depth*10;
-  /* pickleball — yellow with holes pattern */
+  const r = 7 + depth*12;
+  const bx=ball.x, by=ball.y - ball.height;
+
+  /* update trail */
+  ballTrail.push({x:bx,y:by,r,t:Date.now()});
+  if(ballTrail.length>10)ballTrail.shift();
+
+  /* spin based on velocity */
+  ballRotAngle += (ball.vx*0.08 + ball.vy*0.04);
+
+  /* === MOTION TRAIL === */
   ctx.save();
-  ctx.translate(bx,by);
-  /* sphere gradient */
-  const g=ctx.createRadialGradient(-r*.3,-r*.4,r*.1,0,0,r);
-  g.addColorStop(0,'#fef9c3');
-  g.addColorStop(.5,'#facc15');
-  g.addColorStop(1,'#a16207');
+  for(let i=0;i<ballTrail.length-1;i++){
+    const t=ballTrail[i];
+    const alpha=(i/ballTrail.length)*0.35;
+    const tr2=t.r*(i/ballTrail.length);
+    const trailG=ctx.createRadialGradient(t.x,t.y,0,t.x,t.y,tr2);
+    trailG.addColorStop(0,`rgba(250,204,21,${alpha})`);
+    trailG.addColorStop(1,'rgba(250,204,21,0)');
+    ctx.fillStyle=trailG;
+    ctx.beginPath();ctx.arc(t.x,t.y,tr2,0,Math.PI*2);ctx.fill();
+  }
+  ctx.restore();
+
+  /* === GROUND SHADOW === */
+  const shadowScale = Math.max(.1, 1-ball.height/300);
+  ctx.save();
+  ctx.fillStyle=`rgba(0,0,0,${Math.max(.08,.4*shadowScale)})`;
+  ctx.beginPath();ctx.ellipse(ball.x, ball.y, (r+4)*shadowScale*1.8, (r+2)*shadowScale*0.4, 0,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+
+  /* === BALL === */
+  ctx.save();
+  ctx.translate(bx, by);
+
+  /* outer glow when moving fast */
+  const speed=Math.hypot(ball.vx,ball.vy+ball.vh);
+  if(speed>5){
+    ctx.shadowColor='#fbbf24';ctx.shadowBlur=Math.min(30,speed*2.5);
+  }
+
+  /* sphere gradient — 3D light from top-left */
+  const sg=ctx.createRadialGradient(-r*.35,-r*.4,r*.05,r*.1,r*.1,r*1.4);
+  sg.addColorStop(0,'#fffde7');
+  sg.addColorStop(.25,'#fef08a');
+  sg.addColorStop(.6,'#facc15');
+  sg.addColorStop(1,'#78350f');
   ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
-  ctx.fillStyle=g;
-  ctx.shadowColor='#fbbf24';ctx.shadowBlur=12;
-  ctx.fill();ctx.shadowBlur=0;
-  /* holes pattern */
-  ctx.fillStyle='rgba(0,0,0,.35)';
-  const holes=[[0,0],[r*.4,-r*.3],[-r*.4,-r*.3],[r*.5,r*.3],[-r*.5,r*.3],[0,r*.5],[0,-r*.5]];
-  for(const [hx,hy] of holes){ctx.beginPath();ctx.arc(hx,hy,r*.13,0,Math.PI*2);ctx.fill();}
-  /* highlight */
-  ctx.beginPath();ctx.ellipse(-r*.3,-r*.4,r*.18,r*.1,-.4,0,Math.PI*2);
-  ctx.fillStyle='rgba(255,255,255,.55)';ctx.fill();
+  ctx.fillStyle=sg;ctx.fill();
+  ctx.shadowBlur=0;
+
+  /* rotating hexagonal hole pattern */
+  ctx.save();
+  ctx.rotate(ballRotAngle);
+  ctx.fillStyle='rgba(0,0,0,.28)';
+  const holeAngles=[0,60,120,180,240,300].map(a=>a*Math.PI/180);
+  for(const ha of holeAngles){
+    const hx=Math.cos(ha)*r*.52, hy=Math.sin(ha)*r*.52;
+    ctx.beginPath();ctx.arc(hx,hy,r*.15,0,Math.PI*2);ctx.fill();
+  }
+  ctx.beginPath();ctx.arc(0,0,r*.13,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+
+  /* rim highlight */
+  ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.strokeStyle='rgba(255,240,100,.25)';ctx.lineWidth=1;ctx.stroke();
+
+  /* specular highlight */
+  const hg=ctx.createRadialGradient(-r*.32,-r*.42,0,-r*.32,-r*.42,r*.35);
+  hg.addColorStop(0,'rgba(255,255,255,.75)');
+  hg.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=hg;
+  ctx.beginPath();ctx.ellipse(-r*.28,-r*.38,r*.28,r*.16,-0.5,0,Math.PI*2);ctx.fill();
+
   ctx.restore();
 }
 
@@ -573,8 +746,34 @@ function drawPaddle(){
   }
 }
 
+function drawArenaLights(){
+  /* spot lights from above shining down onto court */
+  const lights=[{x:W*.2,gy:FAR_BASELINE},{x:W*.5,gy:FAR_BASELINE},{x:W*.8,gy:FAR_BASELINE}];
+  for(const l of lights){
+    const sg=ctx.createRadialGradient(l.x,l.gy,0,l.x,l.gy,80);
+    sg.addColorStop(0,'rgba(20,184,166,.06)');
+    sg.addColorStop(1,'rgba(20,184,166,0)');
+    ctx.fillStyle=sg;ctx.fillRect(l.x-80,l.gy-80,160,160);
+  }
+  /* lens flare from ball when hit hard */
+  if(flashAlpha>0.2&&ball.alive){
+    const bx=ball.x,by=ball.y-ball.height;
+    const fg=ctx.createRadialGradient(bx,by,0,bx,by,60);
+    fg.addColorStop(0,`rgba(20,184,166,${flashAlpha*.6})`);
+    fg.addColorStop(.4,`rgba(20,184,166,${flashAlpha*.2})`);
+    fg.addColorStop(1,'rgba(20,184,166,0)');
+    ctx.fillStyle=fg;ctx.fillRect(bx-60,by-60,120,120);
+    /* cross flare */
+    ctx.save();ctx.globalAlpha=flashAlpha*0.4;
+    ctx.strokeStyle='rgba(255,255,255,.8)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(bx-80,by);ctx.lineTo(bx+80,by);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(bx,by-80);ctx.lineTo(bx,by+80);ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function draw(){
-  drawCamera();drawCourt();
+  drawCamera();drawCourt();drawArenaLights();
   /* point flash */
   if(pointFlash>0){
     ctx.save();ctx.globalAlpha=pointFlash;
