@@ -181,6 +181,7 @@ function burstC(x,y,n=70){for(let i=0;i<n;i++)confetti.push(new Cf(x,y));}
 function floatT(x,y,t,c,big){floatTexts.push(new FT(x,y,t,c,big));}
 
 function update(d){
+  if(window.GameOS) GameOS.update(d);
   if(timerMode!=='endless'&&timerRunning){timerLeft=Math.max(0,timerLeft-d);if(timerLeft<=0){timerRunning=false;endGame();}}
   if(comboT>0)comboT-=d;else combo=0;
   /* hole follows palm */
@@ -206,8 +207,11 @@ function update(d){
       score+=pts;levelScore+=pts;
       hole.targetR+=Math.min(2.5, .3+o.spec.pts*.18);
       const big=o.spec.pts>=8;
-      floatT(o.x,o.y-30, combo>=2?`×${combo} +${pts}`:`+${pts}`, big?'#fbbf24':'#a5b4fc', big);
+      if(window.GameOS) GameOS.onScore(pts, o.x, o.y-30);
+      else floatT(o.x,o.y-30, combo>=2?`×${combo} +${pts}`:`+${pts}`, big?'#fbbf24':'#a5b4fc', big);
       sfx.eat(big);
+      /* CHAIN DEVOUR — every 5-combo triggers a brief slow-mo for the next gulp */
+      if(combo>0 && combo%5===0 && window.GameOS){ GameOS.onBigMoment(0.45); GameOS.shake(10,12); }
       if(big){shakeFrames=10;shakeAmp=6;flashAlpha=.3;flashCol='168,85,247';sfx.big();}
       burstP(o.x,o.y,'#6366f1',12);
       if(levelScore>=8+level*5){level++;levelScore=0;flashAlpha=.5;flashCol='99,102,241';burstC(W*.3,SAFE.y+200,60);burstC(W*.7,SAFE.y+200,60);floatT(W/2,SAFE.y+200,`🕳️ LEVEL ${level}`,'#fbbf24',true);sfx.levelup();}
@@ -282,7 +286,9 @@ function draw(){
   for(const p of particles){p.update();p.draw();}particles=particles.filter(p=>p.life>0);
   for(const c of confetti){c.update();c.draw();}confetti=confetti.filter(c=>c.life>0);
   for(const t of floatTexts){t.update();t.draw();}floatTexts=floatTexts.filter(t=>t.life>0);
+  if(window.GameOS) GameOS.drawPopups(ctx);
   drawHUD();
+  if(window.GameOS) GameOS.drawComboHUD(ctx, SAFE.x+12, SAFE.y+SAFE.h-24, 245);
 }
 
 function drawHUD(){
@@ -311,7 +317,7 @@ function pickMime(){const w=['video/mp4;codecs=avc1.42E01F','video/mp4;codecs=av
 function startRecording(){recChunks=[];savedBlob=null;$('dlArea').style.display='none';getAC();const vs=canvas.captureStream(30);let stream=vs;if(audioDest&&audioDest.stream&&audioDest.stream.getAudioTracks().length){stream=new MediaStream([...vs.getVideoTracks(),...audioDest.stream.getAudioTracks()]);}savedMime=pickMime();const opts={videoBitsPerSecond:16_000_000,audioBitsPerSecond:256_000};if(savedMime)opts.mimeType=savedMime;try{mediaRecorder=new MediaRecorder(stream,opts);}catch(e){mediaRecorder=new MediaRecorder(stream);savedMime='video/webm';}mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data);};mediaRecorder.onstop=()=>{const ext=savedMime.includes('mp4')?'mp4':'webm';savedBlob=new Blob(recChunks,{type:savedMime||'video/webm'});savedBlob.__ext=ext;const mb=(savedBlob.size/1024/1024).toFixed(1);$('dlMeta').textContent=`${mb}MB .${ext}`;$('dlArea').style.display='flex';$('status').textContent='✅ Done!';};mediaRecorder.start(100);isRecording=true;$('recordBtn').textContent='⏹ Stop & Save';$('recordBtn').classList.add('rec');$('status').textContent='● REC';try{const ac=getAC();if(ac){const o=ac.createOscillator(),g=ac.createGain();g.gain.value=0.0001;o.connect(g);g.connect(audioOut());o.frequency.value=20;o.start();mediaRecorder._silent=o;}}catch(_){}ping('record_hole');}
 function stopRecording(){if(mediaRecorder){try{if(mediaRecorder._silent)mediaRecorder._silent.stop();}catch(_){}if(mediaRecorder.state!=='inactive')mediaRecorder.stop();}isRecording=false;$('recordBtn').textContent='⏺ Record';$('recordBtn').classList.remove('rec');$('status').textContent='Saving…';}
 
-function reset(){score=0;level=1;combo=0;comboT=0;levelScore=0;eaten=0;objects=[];particles=[];floatTexts=[];confetti=[];falling=[];spawnT=.4;hole={x:W/2,y:H/2,r:22,targetR:22};flashAlpha=0;shakeFrames=0;timerRunning=false;timerLeft=parseInt(timerMode)||999;}
+function reset(){score=0;level=1;combo=0;comboT=0;levelScore=0;eaten=0;objects=[];particles=[];floatTexts=[];confetti=[];falling=[];spawnT=.4;hole={x:W/2,y:H/2,r:22,targetR:22};flashAlpha=0;shakeFrames=0;timerRunning=false;timerLeft=parseInt(timerMode)||999;if(window.GameOS)GameOS.reset();}
 $('startBtn').addEventListener('click',()=>{getAC();reset();cdNum=3;cdT=1;sfx.count(false);gameState='countdown';$('startBtn').textContent='🔄 Restart';ping('start_hole');});
 $('stopBtn').addEventListener('click',()=>{if(gameState==='playing'||gameState==='countdown')endGame();});
 $('recordBtn').addEventListener('click',()=>{if(!isRecording)startRecording();else stopRecording();});

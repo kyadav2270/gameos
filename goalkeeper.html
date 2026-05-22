@@ -528,6 +528,8 @@ function burstC(x,y,n=70){for(let i=0;i<n;i++)confetti.push(new Cf(x,y));}
 function floatT(x,y,t,c,big){floatTexts.push(new FT(x,y,t,c,big));}
 
 function update(d){
+  if(window.GameOS) GameOS.update(d);
+  const ts = (window.GameOS && window.GameOS.timeScale) ? GameOS.timeScale() : 1;
   if(timerMode!=='endless'&&timerRunning){timerLeft=Math.max(0,timerLeft-d);if(timerLeft<=0){timerRunning=false;endGame();}}
   if(comboT>0)comboT-=d;else combo=0;
   spawnT-=d;
@@ -536,7 +538,12 @@ function update(d){
   const pts=allHandPts();
   for(const b of balls){
     if(b.saved||b.scored){b.fxT+=d*2.5;if(b.fxT>1)b.life=0;continue;}
-    b.x+=b.vx;b.y+=b.vy;b.scale=Math.min(1.4,b.scale+d*.4);
+    /* PRECOGNITION: slow-mo trigger as the shot enters the strike zone */
+    if(!b._danger && b.y>H*.55 && b.vy>0){
+      b._danger=true;
+      if(window.GameOS) GameOS.onBigMoment(0.4);
+    }
+    b.x+=b.vx*ts;b.y+=b.vy*ts;b.scale=Math.min(1.4,b.scale+d*.4);
     b.r=24*b.scale;b.rot+=b.rotV;
     /* trail */
     b.trail.push({x:b.x,y:b.y,r:b.r*.85});
@@ -550,7 +557,8 @@ function update(d){
         const mult=combo>=2?combo:1;
         const ps=3*mult;
         score+=ps;levelScore+=ps;
-        floatT(b.x,b.y-30,combo>=2?`SAVE! ×${combo} +${ps}`:`SAVE! +${ps}`,'#22c55e',true);
+        if(window.GameOS){ GameOS.onScore(ps, b.x, b.y-30, `SAVE +${ps}`); GameOS.shake(8,10); }
+        else floatT(b.x,b.y-30,combo>=2?`SAVE! ×${combo} +${ps}`:`SAVE! +${ps}`,'#22c55e',true);
         sfx.save();
         if(levelScore>=cfg().nextAt){level++;levelScore=0;flashAlpha=.5;flashCol='34,197,94';burstC(W*.3,SAFE.y+200,60);burstC(W*.7,SAFE.y+200,60);floatT(W/2,SAFE.y+200,`🚀 LEVEL ${level}`,'#fbbf24',true);sfx.levelup();}
         break;
@@ -611,7 +619,9 @@ function draw(){
   for(const t of floatTexts){t.update();t.draw();}floatTexts=floatTexts.filter(t=>t.life>0);
 
   drawHands();
+  if(window.GameOS) GameOS.drawPopups(ctx);
   drawHUD();
+  if(window.GameOS) GameOS.drawComboHUD(ctx, SAFE.x+12, SAFE.y+SAFE.h-24, 140);
 }
 
 function drawHands(){
@@ -780,7 +790,7 @@ function startRecording(){
 function stopRecording(){if(mediaRecorder){try{if(mediaRecorder._silent)mediaRecorder._silent.stop();}catch(_){}if(mediaRecorder.state!=='inactive')mediaRecorder.stop();}isRecording=false;$('recordBtn').textContent='⏺ Record';$('recordBtn').classList.remove('rec');$('status').textContent='Saving…';}
 
 /* BUTTONS */
-function reset(){score=0;level=1;lives=3;combo=0;comboT=0;levelScore=0;balls=[];particles=[];floatTexts=[];confetti=[];spawnT=1.4;flashAlpha=0;shakeFrames=0;timerRunning=false;timerLeft=parseInt(timerMode)||999;}
+function reset(){score=0;level=1;lives=3;combo=0;comboT=0;levelScore=0;balls=[];particles=[];floatTexts=[];confetti=[];spawnT=1.4;flashAlpha=0;shakeFrames=0;timerRunning=false;timerLeft=parseInt(timerMode)||999;if(window.GameOS)GameOS.reset();}
 $('startBtn').addEventListener('click',()=>{getAC();reset();cdNum=3;cdT=1;sfx.count(false);gameState='countdown';$('startBtn').textContent='🔄 Restart';ping('start_keeper');});
 $('stopBtn').addEventListener('click',()=>{if(gameState==='playing'||gameState==='countdown')endGame();});
 $('recordBtn').addEventListener('click',()=>{if(!isRecording)startRecording();else stopRecording();});

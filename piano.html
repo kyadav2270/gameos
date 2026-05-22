@@ -133,6 +133,7 @@ function laneOf(x){
 let prevHandTaps={}; /* keyed by hand idx; track last lane to detect entry */
 
 function update(d){
+  if(window.GameOS) GameOS.update(d);
   if(timerMode!=='endless'&&timerRunning){timerLeft=Math.max(0,timerLeft-d);if(timerLeft<=0){timerRunning=false;endGame();}}
   /* gradually speed up */
   speed=180 + Math.min(220, hits*4);
@@ -144,7 +145,8 @@ function update(d){
   for(const t of tiles){
     if(t.fx>0)t.fx-=d*3;
     if(t.hit||t.missed) continue;
-    t.y += speed*d;
+    const _ts=(window.GameOS&&window.GameOS.timeScale)?GameOS.timeScale():1;
+    t.y += speed*d*_ts;
     if(t.y > HIT_LINE+50){
       /* missed */
       t.missed=true; misses++; streak=0;
@@ -173,10 +175,16 @@ function update(d){
       const pts = perfect?3:1;
       score+=pts*Math.max(1, Math.floor(streak/5));
       const fxCol = perfect?'#fbbf24':'#a855f7';
-      floatT(SAFE.x+lane*LANE_W+LANE_W/2, HIT_LINE-30, perfect?'PERFECT!':'+1', fxCol, perfect);
+      if(window.GameOS) GameOS.onScore(pts, SAFE.x+lane*LANE_W+LANE_W/2, HIT_LINE-30, perfect?'PERFECT!':'+1');
+      else floatT(SAFE.x+lane*LANE_W+LANE_W/2, HIT_LINE-30, perfect?'PERFECT!':'+1', fxCol, perfect);
       burstP(SAFE.x+lane*LANE_W+LANE_W/2, HIT_LINE, fxCol, perfect?14:8);
       sfx.note(lane);
-      if(streak>0 && streak%10===0){floatT(W/2, SAFE.y+200, `🔥 ${streak} STREAK`, '#fbbf24', true);sfx.levelup();burstC(W*.3,SAFE.y+220,30);burstC(W*.7,SAFE.y+220,30);}
+      /* CRESCENDO: every 10 streak → slow-mo musical moment */
+      if(streak>0 && streak%10===0){
+        floatT(W/2, SAFE.y+200, `🔥 ${streak} STREAK`, '#fbbf24', true);sfx.levelup();
+        burstC(W*.3,SAFE.y+220,30);burstC(W*.7,SAFE.y+220,30);
+        if(window.GameOS){ GameOS.onBigMoment(0.6); GameOS.shake(10,14); }
+      }
     }
   }
   /* remove tiles offscreen */
@@ -310,7 +318,9 @@ function draw(){
   for(const p of particles){p.update();p.draw();}particles=particles.filter(p=>p.life>0);
   for(const c of confetti){c.update();c.draw();}confetti=confetti.filter(c=>c.life>0);
   for(const t of floatTexts){t.update();t.draw();}floatTexts=floatTexts.filter(t=>t.life>0);
+  if(window.GameOS) GameOS.drawPopups(ctx);
   drawHUD();
+  if(window.GameOS) GameOS.drawComboHUD(ctx, SAFE.x+12, SAFE.y+SAFE.h-24, 280);
 }
 
 function drawHUD(){
@@ -338,7 +348,7 @@ function pickMime(){const w=['video/mp4;codecs=avc1.42E01F','video/mp4;codecs=av
 function startRecording(){recChunks=[];savedBlob=null;$('dlArea').style.display='none';getAC();const vs=canvas.captureStream(30);let stream=vs;if(audioDest&&audioDest.stream&&audioDest.stream.getAudioTracks().length){stream=new MediaStream([...vs.getVideoTracks(),...audioDest.stream.getAudioTracks()]);}savedMime=pickMime();const opts={videoBitsPerSecond:16_000_000,audioBitsPerSecond:256_000};if(savedMime)opts.mimeType=savedMime;try{mediaRecorder=new MediaRecorder(stream,opts);}catch(e){mediaRecorder=new MediaRecorder(stream);savedMime='video/webm';}mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data);};mediaRecorder.onstop=()=>{const ext=savedMime.includes('mp4')?'mp4':'webm';savedBlob=new Blob(recChunks,{type:savedMime||'video/webm'});savedBlob.__ext=ext;const mb=(savedBlob.size/1024/1024).toFixed(1);$('dlMeta').textContent=`${mb}MB .${ext}`;$('dlArea').style.display='flex';$('status').textContent='✅ Done!';};mediaRecorder.start(100);isRecording=true;$('recordBtn').textContent='⏹ Stop & Save';$('recordBtn').classList.add('rec');$('status').textContent='● REC';try{const ac=getAC();if(ac){const o=ac.createOscillator(),g=ac.createGain();g.gain.value=0.0001;o.connect(g);g.connect(audioOut());o.frequency.value=20;o.start();mediaRecorder._silent=o;}}catch(_){}ping('record_piano');}
 function stopRecording(){if(mediaRecorder){try{if(mediaRecorder._silent)mediaRecorder._silent.stop();}catch(_){}if(mediaRecorder.state!=='inactive')mediaRecorder.stop();}isRecording=false;$('recordBtn').textContent='⏺ Record';$('recordBtn').classList.remove('rec');$('status').textContent='Saving…';}
 
-function reset(){score=0;hits=0;misses=0;streak=0;maxStreak=0;noteIdx=0;tiles=[];particles=[];floatTexts=[];confetti=[];spawnT=.8;flashAlpha=0;shakeFrames=0;timerRunning=false;timerLeft=parseInt(timerMode)||999;}
+function reset(){score=0;hits=0;misses=0;streak=0;maxStreak=0;noteIdx=0;tiles=[];particles=[];floatTexts=[];confetti=[];spawnT=.8;flashAlpha=0;shakeFrames=0;timerRunning=false;timerLeft=parseInt(timerMode)||999;if(window.GameOS)GameOS.reset();}
 $('startBtn').addEventListener('click',()=>{getAC();reset();cdNum=3;cdT=1;sfx.count(false);gameState='countdown';$('startBtn').textContent='🔄 Restart';ping('start_piano');});
 $('stopBtn').addEventListener('click',()=>{if(gameState==='playing'||gameState==='countdown')endGame();});
 $('recordBtn').addEventListener('click',()=>{if(!isRecording)startRecording();else stopRecording();});
