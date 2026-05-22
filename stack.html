@@ -184,6 +184,10 @@ function tryDrop(){
     floatT(newX,movingBlock.y-30, `✨ PERFECT ×${perfectStreak} +${bonus}`, '#fbbf24', true);
     burstP(newX,movingBlock.y,'#fbbf24',16);burstC(newX,movingBlock.y,20);
     sfx.perfect();flashAlpha=.35;flashCol='251,191,36';
+    if(window.GameOS){
+      GameOS.onScore(bonus, newX, movingBlock.y-30);
+      if(perfectStreak>=3){ GameOS.onBigMoment(Math.min(1, perfectStreak*0.18)); GameOS.shake(6+perfectStreak,12); }
+    }
     /* perfects DON'T shrink — give back original width if streak >=3 */
     if(perfectStreak>=3) stack[stack.length-1].w = Math.min(W*.55, stack[stack.length-1].w + 8);
   } else {
@@ -212,9 +216,11 @@ function tryDrop(){
 }
 
 function update(d){
+  if(window.GameOS) GameOS.update(d);
+  const ts = (window.GameOS && window.GameOS.timeScale) ? GameOS.timeScale() : 1;
   if(timerMode!=='endless'&&timerRunning){timerLeft=Math.max(0,timerLeft-d);if(timerLeft<=0){timerRunning=false;endGame();}}
   if(movingBlock){
-    movingBlock.x += movingBlock.vx;
+    movingBlock.x += movingBlock.vx * ts;
     const top=stack[stack.length-1];
     /* bounce edges */
     if(movingBlock.x - movingBlock.w/2 < 20){movingBlock.vx=Math.abs(movingBlock.vx);}
@@ -336,7 +342,9 @@ function draw(){
   for(const p of particles){p.update();p.draw();}particles=particles.filter(p=>p.life>0);
   for(const c of confetti){c.update();c.draw();}confetti=confetti.filter(c=>c.life>0);
   for(const t of floatTexts){t.update();t.draw();}floatTexts=floatTexts.filter(t=>t.life>0);
+  if(window.GameOS) GameOS.drawPopups(ctx);
   drawHUD();
+  if(window.GameOS) GameOS.drawComboHUD(ctx, SAFE.x+12, SAFE.y+SAFE.h-24, 200);
 }
 
 function drawHUD(){
@@ -364,7 +372,7 @@ function pickMime(){const w=['video/mp4;codecs=avc1.42E01F','video/mp4;codecs=av
 function startRecording(){recChunks=[];savedBlob=null;$('dlArea').style.display='none';getAC();const vs=canvas.captureStream(30);let stream=vs;if(audioDest&&audioDest.stream&&audioDest.stream.getAudioTracks().length){stream=new MediaStream([...vs.getVideoTracks(),...audioDest.stream.getAudioTracks()]);}savedMime=pickMime();const opts={videoBitsPerSecond:16_000_000,audioBitsPerSecond:256_000};if(savedMime)opts.mimeType=savedMime;try{mediaRecorder=new MediaRecorder(stream,opts);}catch(e){mediaRecorder=new MediaRecorder(stream);savedMime='video/webm';}mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data);};mediaRecorder.onstop=()=>{const ext=savedMime.includes('mp4')?'mp4':'webm';savedBlob=new Blob(recChunks,{type:savedMime||'video/webm'});savedBlob.__ext=ext;const mb=(savedBlob.size/1024/1024).toFixed(1);$('dlMeta').textContent=`${mb}MB .${ext}`;$('dlArea').style.display='flex';$('status').textContent='✅ Done!';};mediaRecorder.start(100);isRecording=true;$('recordBtn').textContent='⏹ Stop & Save';$('recordBtn').classList.add('rec');$('status').textContent='● REC';try{const ac=getAC();if(ac){const o=ac.createOscillator(),g=ac.createGain();g.gain.value=0.0001;o.connect(g);g.connect(audioOut());o.frequency.value=20;o.start();mediaRecorder._silent=o;}}catch(_){}ping('record_stack');}
 function stopRecording(){if(mediaRecorder){try{if(mediaRecorder._silent)mediaRecorder._silent.stop();}catch(_){}if(mediaRecorder.state!=='inactive')mediaRecorder.stop();}isRecording=false;$('recordBtn').textContent='⏺ Record';$('recordBtn').classList.remove('rec');$('status').textContent='Saving…';}
 
-function reset(){score=0;blocks=0;perfectStreak=0;stack=[];movingBlock=null;particles=[];floatTexts=[];confetti=[];flashAlpha=0;shakeFrames=0;prevPalm=null;dropArmed=true;timerRunning=false;timerLeft=parseInt(timerMode)||999;}
+function reset(){score=0;blocks=0;perfectStreak=0;stack=[];movingBlock=null;particles=[];floatTexts=[];confetti=[];flashAlpha=0;shakeFrames=0;prevPalm=null;dropArmed=true;timerRunning=false;timerLeft=parseInt(timerMode)||999;if(window.GameOS)GameOS.reset();}
 $('startBtn').addEventListener('click',()=>{getAC();reset();cdNum=3;cdT=1;sfx.count(false);gameState='countdown';$('startBtn').textContent='🔄 Restart';ping('start_stack');});
 $('stopBtn').addEventListener('click',()=>{if(gameState==='playing'||gameState==='countdown')endGame();});
 $('recordBtn').addEventListener('click',()=>{if(!isRecording)startRecording();else stopRecording();});

@@ -121,8 +121,19 @@ function spawnPipe(){
 }
 function endGame(){if(gameState==='gameover')return;gameState='gameover';if(score>hiScore){hiScore=score;localStorage.setItem('flappy_hi',hiScore);}sfx.cheer();ping('complete_flappy');burstC(W*.3,SAFE.y+220,90);burstC(W*.7,SAFE.y+220,90);if(isRecording){if(endRecordTimer)clearTimeout(endRecordTimer);endRecordTimer=setTimeout(()=>{if(isRecording&&gameState==='gameover')stopRecording();},END_RECORD_MS);}}
 
+let gravFlip=0, gravFlipNext=5; /* seconds remaining, score threshold for next flip */
 function update(d){
+  if(window.GameOS) GameOS.update(d);
   if(timerMode!=='endless'&&timerRunning){timerLeft=Math.max(0,timerLeft-d);if(timerLeft<=0){timerRunning=false;endGame();}}
+  /* GRAVITY FLIP — every 5 pipes the world inverts for 3s. Bird's instincts betray you. */
+  if(score>=gravFlipNext && gravFlip<=0){
+    gravFlip=3.0; gravFlipNext+=5;
+    if(window.GameOS){ GameOS.onBigMoment(0.8); GameOS.shake(12,18); }
+    floatT(W/2, SAFE.y+120, '🌀 GRAVITY FLIP!', '#a855f7', true);
+    sfx.flap();
+  }
+  if(gravFlip>0) gravFlip-=d;
+  const gDir = gravFlip>0 ? -1 : 1;
 
   /* DETECT FLAP: any hand moving UP fast = thrust */
   const currentHandY = hands.map(h=>h[0]?.y).filter(v=>typeof v==='number');
@@ -136,15 +147,15 @@ function update(d){
   prevHandY=currentHandY;
 
   if(totalFlap>10){
-    bird.vy = -7 - Math.min(6, totalFlap*0.3); /* upward thrust */
+    bird.vy = gDir * (-7 - Math.min(6, totalFlap*0.3)); /* thrust opposes gravity direction */
     bird.wingPhase = .8;
     sfx.flap();
     burstP(bird.x-15, bird.y, '#fbbf24', 3);
   }
 
-  /* gravity */
-  bird.vy += 0.35;
-  bird.vy = Math.min(bird.vy, 10);
+  /* gravity (flips during gravFlip) */
+  bird.vy += 0.35 * gDir;
+  bird.vy = Math.max(-10, Math.min(bird.vy, 10));
   bird.y += bird.vy;
   bird.rot = Math.max(-.5, Math.min(1.0, bird.vy*0.06));
   bird.wingPhase = Math.max(0, bird.wingPhase - d*4);
@@ -168,7 +179,8 @@ function update(d){
     /* check pass */
     if(!p.passed && p.x+p.w < bird.x){
       p.passed=true; passed++; score++;
-      floatT(bird.x, bird.y-40, '+1', '#fbbf24');
+      if(window.GameOS) GameOS.onScore(1, bird.x, bird.y-40, '+1');
+      else floatT(bird.x, bird.y-40, '+1', '#fbbf24');
       sfx.score();burstP(p.x+p.w/2, p.topH+p.gap/2, '#fbbf24', 8);
       flashAlpha=.2; flashCol='251,191,36';
     }
@@ -326,7 +338,13 @@ function draw(){
   for(const p of particles){p.update();p.draw();}particles=particles.filter(p=>p.life>0);
   for(const c of confetti){c.update();c.draw();}confetti=confetti.filter(c=>c.life>0);
   for(const t of floatTexts){t.update();t.draw();}floatTexts=floatTexts.filter(t=>t.life>0);
+  if(gravFlip>0){ /* purple gravity-flip overlay */
+    const a=Math.min(.22, gravFlip*0.15);
+    ctx.fillStyle=`rgba(168,85,247,${a})`; ctx.fillRect(0,0,W,H);
+  }
+  if(window.GameOS) GameOS.drawPopups(ctx);
   drawHUD();
+  if(window.GameOS) GameOS.drawComboHUD(ctx, SAFE.x+12, SAFE.y+SAFE.h-24, 84);
 }
 
 function drawHUD(){
@@ -353,7 +371,7 @@ function pickMime(){const w=['video/mp4;codecs=avc1.42E01F','video/mp4;codecs=av
 function startRecording(){recChunks=[];savedBlob=null;$('dlArea').style.display='none';getAC();const vs=canvas.captureStream(30);let stream=vs;if(audioDest&&audioDest.stream&&audioDest.stream.getAudioTracks().length){stream=new MediaStream([...vs.getVideoTracks(),...audioDest.stream.getAudioTracks()]);}savedMime=pickMime();const opts={videoBitsPerSecond:16_000_000,audioBitsPerSecond:256_000};if(savedMime)opts.mimeType=savedMime;try{mediaRecorder=new MediaRecorder(stream,opts);}catch(e){mediaRecorder=new MediaRecorder(stream);savedMime='video/webm';}mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data);};mediaRecorder.onstop=()=>{const ext=savedMime.includes('mp4')?'mp4':'webm';savedBlob=new Blob(recChunks,{type:savedMime||'video/webm'});savedBlob.__ext=ext;const mb=(savedBlob.size/1024/1024).toFixed(1);$('dlMeta').textContent=`${mb}MB .${ext}`;$('dlArea').style.display='flex';$('status').textContent='✅ Done!';};mediaRecorder.start(100);isRecording=true;$('recordBtn').textContent='⏹ Stop & Save';$('recordBtn').classList.add('rec');$('status').textContent='● REC';try{const ac=getAC();if(ac){const o=ac.createOscillator(),g=ac.createGain();g.gain.value=0.0001;o.connect(g);g.connect(audioOut());o.frequency.value=20;o.start();mediaRecorder._silent=o;}}catch(_){}ping('record_flappy');}
 function stopRecording(){if(mediaRecorder){try{if(mediaRecorder._silent)mediaRecorder._silent.stop();}catch(_){}if(mediaRecorder.state!=='inactive')mediaRecorder.stop();}isRecording=false;$('recordBtn').textContent='⏺ Record';$('recordBtn').classList.remove('rec');$('status').textContent='Saving…';}
 
-function reset(){score=0;passed=0;bird.y=H*.45;bird.vy=0;bird.rot=0;bird.wingPhase=0;pipes=[];pipeT=.8;bgX=0;scrolled=0;prevHandY=[];particles=[];floatTexts=[];confetti=[];flashAlpha=0;shakeFrames=0;timerRunning=false;timerLeft=parseInt(timerMode)||999;}
+function reset(){score=0;passed=0;bird.y=H*.45;bird.vy=0;bird.rot=0;bird.wingPhase=0;pipes=[];pipeT=.8;bgX=0;scrolled=0;prevHandY=[];particles=[];floatTexts=[];confetti=[];flashAlpha=0;shakeFrames=0;timerRunning=false;timerLeft=parseInt(timerMode)||999;gravFlip=0;gravFlipNext=5;if(window.GameOS)GameOS.reset();}
 $('startBtn').addEventListener('click',()=>{getAC();reset();cdNum=3;cdT=1;sfx.count(false);gameState='countdown';$('startBtn').textContent='🔄 Restart';ping('start_flappy');});
 $('stopBtn').addEventListener('click',()=>{if(gameState==='playing'||gameState==='countdown')endGame();});
 $('recordBtn').addEventListener('click',()=>{if(!isRecording)startRecording();else stopRecording();});
