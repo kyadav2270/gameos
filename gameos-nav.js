@@ -155,6 +155,111 @@ window.drawGameOSEnd = function(ctx, opts){
   ctx.fillText('▶ Press Start to play again',ccx,cy+ch-20);
   ctx.restore();
 };
+
+/* ══ REALITY ENGINE ════════════════════════════════════════════
+ *  Shared juice layer for every GameOS game.
+ *  Usage in any game's loop:
+ *    GameOS.update(dt);                        // tick engine
+ *    GameOS.onScore(amount, x, y, label?);     // adds combo + popup + haptic
+ *    GameOS.onBigMoment(0.6);                  // triggers slow-mo (0..1 intensity)
+ *    GameOS.shake(amp, frames);                // screen-shake
+ *    const t = GameOS.applyShake(ctx);         // call before drawing world; pass returned token to GameOS.restoreShake(ctx,t)
+ *    GameOS.drawPopups(ctx);                   // draw floating score texts
+ *    GameOS.drawComboHUD(ctx, x, y, hue);      // optional combo meter
+ *    const eff = GameOS.timeScale();           // 1.0 normal, <1 slow-mo
+ *    const diff = GameOS.difficulty(elapsed);  // 1.0 → 1.8 curve
+ * ════════════════════════════════════════════════════════════ */
+window.GameOS = (function(){
+  let combo=0, comboTimer=0, comboBest=0;
+  let slowMo=0;                                 // seconds remaining
+  let shakeFrames=0, shakeAmp=0;
+  const popups=[];                              // {x,y,vy,life,max,text,color,scale}
+  const COMBO_WINDOW = 2.4;                     // seconds to maintain combo
+
+  function update(dt){
+    dt = Math.min(dt||0, 0.05);
+    if(comboTimer>0){ comboTimer-=dt; if(comboTimer<=0){ combo=0; } }
+    if(slowMo>0){ slowMo-=dt; if(slowMo<0) slowMo=0; }
+    if(shakeFrames>0) shakeFrames--;
+    for(let i=popups.length-1;i>=0;i--){
+      const p=popups[i]; p.life-=dt;
+      p.y += p.vy*dt; p.vy += 40*dt;
+      if(p.life<=0) popups.splice(i,1);
+    }
+  }
+  function timeScale(){ return slowMo>0 ? 0.32 : 1; }
+  function onScore(amount, x, y, label){
+    combo++; if(combo>comboBest) comboBest=combo;
+    comboTimer = COMBO_WINDOW;
+    const mult = 1 + Math.min(combo-1,9)*0.25;  // up to 3.25x at 10-combo
+    const total = Math.round(amount*mult);
+    const c = combo>=5 ? '#fbbf24' : combo>=3 ? '#a855f7' : '#14b8a6';
+    popups.push({x:x||0,y:y||0,vy:-60,life:1.1,max:1.1,
+      text: (label||`+${total}`) + (combo>=2?`  ×${combo}`:''),
+      color:c, scale: 1+Math.min(combo,8)*0.05});
+    try{ if(combo>=3 && navigator.vibrate) navigator.vibrate(8 + combo*2); }catch(_){}
+    return total;
+  }
+  function breakCombo(){ combo=0; comboTimer=0; }
+  function onBigMoment(intensity){
+    intensity = Math.max(0,Math.min(1,intensity||0.5));
+    slowMo = Math.max(slowMo, 0.35 + intensity*0.5);
+    try{ if(navigator.vibrate) navigator.vibrate(20 + intensity*40); }catch(_){}
+  }
+  function shake(amp, frames){
+    shakeAmp = Math.max(shakeAmp, amp||6);
+    shakeFrames = Math.max(shakeFrames, frames||10);
+  }
+  function applyShake(ctx){
+    if(shakeFrames<=0) return null;
+    const a = shakeAmp * (shakeFrames/30);
+    const dx=(Math.random()-.5)*a*2, dy=(Math.random()-.5)*a*2;
+    ctx.save(); ctx.translate(dx,dy); return true;
+  }
+  function restoreShake(ctx, token){ if(token) ctx.restore(); }
+  function drawPopups(ctx){
+    ctx.save();
+    for(const p of popups){
+      const a = Math.min(1, p.life/p.max*1.4);
+      ctx.globalAlpha = a;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font = `900 ${Math.round(18*p.scale)}px -apple-system,Arial`;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=4;
+      ctx.fillText(p.text, p.x, p.y);
+    }
+    ctx.restore();
+  }
+  function drawComboHUD(ctx, x, y, hue){
+    if(combo<2) return;
+    hue = hue==null?280:hue;
+    const frac = Math.max(0, comboTimer/COMBO_WINDOW);
+    ctx.save();
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.font='900 18px -apple-system,Arial';
+    ctx.fillStyle=`hsl(${hue},80%,65%)`;
+    ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=4;
+    ctx.fillText(`×${combo}`, x, y);
+    /* combo timer bar */
+    ctx.shadowBlur=0;
+    ctx.fillStyle=`hsla(${hue},80%,55%,.25)`;
+    ctx.fillRect(x, y+12, 46, 3);
+    ctx.fillStyle=`hsl(${hue},80%,60%)`;
+    ctx.fillRect(x, y+12, 46*frac, 3);
+    ctx.restore();
+  }
+  function difficulty(elapsedSec){
+    /* 1.0 at start → ~1.8 by 90s, asymptotes near 2.0 */
+    return 1 + 0.8 * (1 - Math.exp(-(elapsedSec||0)/45));
+  }
+  function reset(){ combo=0; comboTimer=0; slowMo=0; shakeFrames=0; popups.length=0; }
+  function getCombo(){ return combo; }
+  function getComboBest(){ return comboBest; }
+  return { update, timeScale, onScore, breakCombo, onBigMoment, shake,
+           applyShake, restoreShake, drawPopups, drawComboHUD,
+           difficulty, reset, getCombo, getComboBest };
+})();
+
 (function(){
   const HUB = 'index.html';
 
