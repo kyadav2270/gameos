@@ -337,13 +337,13 @@ function updateBall(d){
   /* REALITY LINE CROSSING */
   if(!crossedRealityLine && ball.bY>=REALITY_Y && ball._prevY<REALITY_Y && ball.side==='player'){
     crossedRealityLine=true;
-    portalBurst=0.55;
+    portalBurst=0.3;
     sfx.cross();
-    /* spray portal particles along the reality line */
-    for(let i=0;i<22;i++){
-      const px=SAFE.x+Math.random()*SAFE.w;
-      particles.push(new P(px,REALITY_Y,i%3===0?'#14b8a6':i%3===1?'#fff':'#0ea5e9',
-        (Math.random()-.5)*18,(Math.random()-.5)*10,2+Math.random()*4));
+    /* subtle portal shimmer along the reality line — keep ball clearly visible */
+    for(let i=0;i<8;i++){
+      const px=ball.bX+(Math.random()-.5)*60;
+      particles.push(new P(px,REALITY_Y,i%2?'#14b8a6':'#0ea5e9',
+        (Math.random()-.5)*8,(Math.random()-.5)*4,1.5+Math.random()*2));
     }
     sloMo=0.7; /* enter slow-mo as ball breaches into YOUR WORLD */
   }
@@ -422,10 +422,10 @@ function updateBall(d){
 
         /* SPECTACLE */
         floatT(ball.bX,ball.bY-30,shotLabel,isSmash?'#f97316':'#14b8a6',isSmash);
-        burstP(ball.bX,ball.bY,isSmash?'#f97316':'#14b8a6',isSmash?32:18,isSmash?1.5:1);
+        burstP(ball.bX,ball.bY,isSmash?'#f97316':'#14b8a6',isSmash?12:6,isSmash?1.1:.8);
         sfx.smash(power);
-        if(isSmash){flashAlpha=.4;flashCol='249,115,22';shakeFrames=12;shakeAmp=10;}
-        else{flashAlpha=.18;flashCol='20,184,166';}
+        if(isSmash){flashAlpha=.12;flashCol='249,115,22';shakeFrames=6;shakeAmp=6;}
+        else{flashAlpha=0;}
         break;
       }
     }
