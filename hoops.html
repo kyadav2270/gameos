@@ -118,9 +118,20 @@ let hiScore=parseInt(localStorage.getItem('hoops_hi')||'0');
 class Ball{
   constructor(x,y,vx,vy){this.x=x;this.y=y;this.vx=vx;this.vy=vy;this.r=22;this.rot=0;this.rotV=vx*.02;this.life=4;this.scored=false;this.passed=false;this.shadowAlpha=.6;}
   update(d){
-    this.x+=this.vx;this.y+=this.vy;
-    this.vy+=0.45; /* gravity */
-    this.rot+=this.rotV;
+    /* RIM BULLET-TIME — trigger once as the ball drops toward the hoop */
+    if(!this.scored && !this._slowed && this.vy>0
+       && this.y>HOOP.y-160 && this.y<HOOP.y-40
+       && Math.abs(this.x-HOOP.x)<HOOP.r*2.2){
+      this._slowed=true;
+      if(window.GameOS){
+        const intensity = 1 - Math.min(1, Math.abs(this.x-HOOP.x)/(HOOP.r*1.5));
+        GameOS.onBigMoment(0.45 + intensity*0.4);
+      }
+    }
+    const ts = (window.GameOS && GameOS.timeScale) ? GameOS.timeScale() : 1;
+    this.x+=this.vx*ts;this.y+=this.vy*ts;
+    this.vy+=0.45*ts; /* gravity */
+    this.rot+=this.rotV*ts;
     this.life-=d;
     /* did it pass through the rim?
        hoop is a horizontal line at HOOP.y with width HOOP.r*1.8
@@ -134,6 +145,7 @@ class Ball{
       const lbl=combo>=2?`SWISH ×${combo} +${pts}`:'SWISH! +2';
       floatT(HOOP.x,HOOP.y-30,lbl,'#fbbf24',combo>=3);
       sfx.swish();burstP(HOOP.x,HOOP.y,'#fbbf24',24);burstC(HOOP.x,HOOP.y,15);
+      if(window.GameOS){ GameOS.onScore(pts, HOOP.x, HOOP.y-30, `SWISH +${pts}`); GameOS.shake(8,10); }
       flashAlpha=.35;flashCol='251,191,36';
       if(hits>0&&hits%5===0){level++;burstC(W*.3,SAFE.y+200,60);burstC(W*.7,SAFE.y+200,60);floatT(W/2,SAFE.y+200,`🚀 LEVEL ${level}`,'#fbbf24',true);sfx.levelup();}
     }
@@ -259,6 +271,7 @@ function endGame(){if(gameState==='gameover')return;gameState='gameover';if(hits
 
 /* UPDATE — detect upward flick = shoot */
 function update(d){
+  if(window.GameOS) GameOS.update(d);
   if(timerMode!=='endless'&&timerRunning){timerLeft=Math.max(0,timerLeft-d);if(timerLeft<=0){timerRunning=false;endGame();}}
   if(comboT>0)comboT-=d;else combo=0;
   const p=palm();
@@ -290,7 +303,9 @@ function draw(){
   for(const p of particles){p.update();p.draw();}particles=particles.filter(p=>p.life>0);
   for(const c of confetti){c.update();c.draw();}confetti=confetti.filter(c=>c.life>0);
   for(const t of floatTexts){t.update();t.draw();}floatTexts=floatTexts.filter(t=>t.life>0);
+  if(window.GameOS) GameOS.drawPopups(ctx);
   drawHUD();
+  if(window.GameOS) GameOS.drawComboHUD(ctx, SAFE.x+12, SAFE.y+SAFE.h-24, 28);
 }
 
 function drawHUD(){
